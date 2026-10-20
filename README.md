@@ -53,7 +53,8 @@ The curve plots input level against output level: the dashed diagonal is
 unchanged (1:1), the solid curve is what the compressor actually does right
 now, and the dot is where the sound playing this instant actually sits. The
 meter on the right shows input and output level, and gain reduction (GR)
-filling down from the top.
+filling down from the top. The SCOPE strip below is a live oscilloscope: the
+raw waveform going in (dim) and the compressed one coming out (bright).
 
 ## Roadmap
 

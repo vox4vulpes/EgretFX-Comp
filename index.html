@@ -76,6 +76,9 @@
   .screen{position:relative; aspect-ratio:950/460; min-height:280px; display:flex;}
   #curve{flex:1; min-width:0; height:100%; display:block; outline:none;}
   #meter{width:76px; height:100%; display:block; flex:none; border-left:1px solid var(--edge);}
+  .scope-wrap{position:relative; height:70px; flex:none; border-top:1px solid var(--edge); border-bottom:1px solid var(--edge); background:var(--scr);}
+  #scope{width:100%; height:100%; display:block;}
+  .scope-label{position:absolute; left:8px; top:4px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; color:var(--fg-soft); pointer-events:none;}
 
   .knob{display:flex; flex-direction:column; align-items:center; gap:2px; width:66px;}
   .knob:focus-visible{outline:2px solid var(--focus); outline-offset:2px; border-radius:8px;}
@@ -190,6 +193,7 @@
     <canvas id="curve" tabindex="0" aria-label="The compressor's input/output transfer curve."></canvas>
     <canvas id="meter" aria-hidden="true"></canvas>
   </div>
+  <div class="scope-wrap"><span class="scope-label">SCOPE</span><canvas id="scope" aria-label="The live input and output waveform."></canvas></div>
 
   <footer class="bar bottom" id="knob-row"></footer>
 </div>
@@ -388,7 +392,7 @@ if (typeof registerProcessor === 'function') {
   }
 
   // ---------- audio ----------
-  var ctx = null, node = null, inputBus = null;
+  var ctx = null, node = null, inputBus = null, preAna = null, postAna = null, preBuf = null, postBuf = null;
   function sendParams(){
     if (node) node.port.postMessage({ type: 'params', p: Object.assign({}, params, { power: !bypassed }) });
   }
@@ -396,6 +400,10 @@ if (typeof registerProcessor === 'function') {
     if (ctx) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     inputBus = ctx.createGain();
+    preAna = ctx.createAnalyser(); preAna.fftSize = 1024;
+    postAna = ctx.createAnalyser(); postAna.fftSize = 1024;
+    preBuf = new Float32Array(preAna.fftSize); postBuf = new Float32Array(postAna.fftSize);
+    inputBus.connect(preAna);
     if (!ctx.audioWorklet) { $('no-worklet').hidden = false; return; }
     var source = $('dsp-shared').textContent + $('dsp-engine').textContent;
     // A data: URL rather than a blob: Chrome refuses blob worklets on pages opened from a file.
@@ -405,6 +413,7 @@ if (typeof registerProcessor === 'function') {
                                                         channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers' });
       inputBus.connect(node);
       node.connect(ctx.destination);
+      node.connect(postAna);
       node.port.onmessage = function(e){ if (e.data.type === 'meter') onMeter(e.data.m); };
       sendParams();
       if (src.playing) startSource();
@@ -744,6 +753,8 @@ if (typeof registerProcessor === 'function') {
   // ---------- the display: the transfer curve and the meter ----------
   var curveCanvas = $('curve'), cg = curveCanvas.getContext('2d');
   var meterCanvas = $('meter'), mg = meterCanvas.getContext('2d');
+  var scopeCanvas = $('scope'), sg = scopeCanvas.getContext('2d');
+  var scopeView = { w: 0, h: 0, dpr: 1 };
   var DB_MIN = -60, DB_MAX = 6;
   var view = { w: 0, h: 0, dpr: 1, pad: 28 };
   function cx(db){ return view.pad + (db - DB_MIN) / (DB_MAX - DB_MIN) * (view.w - view.pad - 10); }
@@ -767,7 +778,33 @@ if (typeof registerProcessor === 'function') {
     curveCanvas.width = Math.round(r.width * dpr); curveCanvas.height = Math.round(r.height * dpr);
     var mr = meterCanvas.getBoundingClientRect();
     meterCanvas.width = Math.round(mr.width * dpr); meterCanvas.height = Math.round(mr.height * dpr);
+    var sr = scopeCanvas.getBoundingClientRect();
+    scopeView.dpr = dpr; scopeView.w = sr.width; scopeView.h = sr.height;
+    scopeCanvas.width = Math.round(sr.width * dpr); scopeCanvas.height = Math.round(sr.height * dpr);
     invalidateCurve(); requestDraw();
+  }
+  // A live oscilloscope: the raw waveform going in (dim) and coming out (bright), redrawn from
+  // two AnalyserNodes each frame -- the classic Web Audio scope technique, no engine changes needed.
+  function drawScope(){
+    var dpr = scopeView.dpr, W = scopeView.w, H = scopeView.h;
+    if (!W || !preAna) return;
+    sg.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sg.fillStyle = T.bgBottom; sg.fillRect(0, 0, W, H);
+    sg.strokeStyle = T.gridMinor; sg.beginPath(); sg.moveTo(0, H / 2); sg.lineTo(W, H / 2); sg.stroke();
+    function plot(buf, color, alpha){
+      sg.strokeStyle = color; sg.globalAlpha = alpha; sg.lineWidth = 1.5; sg.beginPath();
+      var n = buf.length;
+      for (var i = 0; i < n; i++) {
+        var x = i / (n - 1) * W, y = H / 2 - buf[i] * (H / 2 - 4);
+        if (i === 0) sg.moveTo(x, y); else sg.lineTo(x, y);
+      }
+      sg.stroke(); sg.globalAlpha = 1;
+    }
+    if (isPowered() && ctx && ctx.state === 'running') {
+      preAna.getFloatTimeDomainData(preBuf); postAna.getFloatTimeDomainData(postBuf);
+      plot(preBuf, T.unity, 0.6);
+      plot(postBuf, T.curve, 1);
+    }
   }
   function drawCurve(){
     var dpr = view.dpr, W = view.w, H = view.h;
@@ -861,7 +898,7 @@ if (typeof registerProcessor === 'function') {
     dotIn += (dotTarget[0] - dotIn) * 0.3; dotOut += (dotTarget[1] - dotOut) * 0.3;
     if (live) for (var i = 0; i < 4; i++) meterShown[i] *= 0.96;
     if (live) grShown *= 0.9;
-    drawCurve(); drawMeter();
+    drawCurve(); drawMeter(); drawScope();
     if (live) requestDraw();
   }
 
