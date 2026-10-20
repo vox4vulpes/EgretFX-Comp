@@ -76,9 +76,6 @@
   .screen{position:relative; aspect-ratio:950/460; min-height:280px; display:flex;}
   #history{flex:1; min-width:0; height:100%; display:block; outline:none;}
   #meter{width:76px; height:100%; display:block; flex:none; border-left:1px solid var(--edge);}
-  .curve-wrap{position:relative; height:150px; flex:none; border-top:1px solid var(--edge); background:var(--scr);}
-  #curve{width:100%; height:100%; display:block;}
-  .curve-label{position:absolute; left:8px; top:4px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; color:var(--fg-soft); pointer-events:none;}
 
   .knob{display:flex; flex-direction:column; align-items:center; gap:2px; width:66px;}
   .knob:focus-visible{outline:2px solid var(--focus); outline-offset:2px; border-radius:8px;}
@@ -190,10 +187,9 @@
   </header>
 
   <div class="screen" id="screen">
-    <canvas id="history" tabindex="0" aria-label="Input and output level over the last few seconds."></canvas>
+    <canvas id="history" tabindex="0" aria-label="Input and output level over the last few seconds, with the transfer curve overlaid."></canvas>
     <canvas id="meter" aria-hidden="true"></canvas>
   </div>
-  <div class="curve-wrap"><span class="curve-label">TRANSFER</span><canvas id="curve" aria-label="The compressor's input/output transfer curve."></canvas></div>
 
   <footer class="bar bottom" id="knob-row"></footer>
 </div>
@@ -366,16 +362,16 @@ if (typeof registerProcessor === 'function') {
   var THEMES = {
     light: {
       bgTop: '#f8f4e8', bgBottom: '#efe8d6', gridMajor: 'rgba(42,36,29,0.16)', gridMinor: 'rgba(42,36,29,0.06)',
-      zero: 'rgba(168,112,10,0.45)', curve: '#2a241d', curveGlow: 'rgba(42,36,29,0.25)', unity: 'rgba(42,36,29,0.3)',
-      dot: '#b85540', axisLabel: 'rgba(42,36,29,0.55)',
+      zero: 'rgba(168,112,10,0.45)', curve: '#2a241d', curveGlow: 'rgba(42,36,29,0.25)', transfer: '#5a8f3e',
+      axisLabel: 'rgba(42,36,29,0.55)',
       meterBg: '#ece4cf', meterTrack: 'rgba(42,36,29,0.08)', meterLow: '#c9a35a', meterMid: '#a8700a', meterTop: '#6b4a10',
       meterText: 'rgba(42,36,29,0.75)', gr: '#b85540',
       histIn: 'rgba(42,36,29,0.12)', histInLine: 'rgba(42,36,29,0.4)'
     },
     dark: {
       bgTop: '#1d170c', bgBottom: '#120e06', gridMajor: 'rgba(240,168,48,0.15)', gridMinor: 'rgba(240,168,48,0.06)',
-      zero: 'rgba(240,168,48,0.3)', curve: '#f2ecd9', curveGlow: 'rgba(242,236,217,0.55)', unity: 'rgba(242,236,217,0.28)',
-      dot: '#e8846a', axisLabel: 'rgba(242,236,217,0.5)',
+      zero: 'rgba(240,168,48,0.3)', curve: '#f2ecd9', curveGlow: 'rgba(242,236,217,0.55)', transfer: '#7ec46a',
+      axisLabel: 'rgba(242,236,217,0.5)',
       meterBg: '#120e06', meterTrack: 'rgba(240,168,48,0.08)', meterLow: '#7a5a18', meterMid: '#f0a830', meterTop: '#f2ecd9',
       meterText: 'rgba(242,236,217,0.75)', gr: '#e8846a',
       histIn: 'rgba(242,236,217,0.10)', histInLine: 'rgba(242,236,217,0.32)'
@@ -747,21 +743,19 @@ if (typeof registerProcessor === 'function') {
   // Every change: tell the engine, remember it, redraw.
   function changed(){ sendParams(); save(); renderKnobs(); invalidateCurve(); }
 
-  // ---------- the display: a scrolling level history (the main screen, like Pro-C3's),
-  // a small transfer-curve editor below it, and the meter ----------
+  // ---------- the display: a scrolling level history with the transfer curve overlaid on
+  // it (one field, like Pro-C3's -- not two separate graphs), and the meter ----------
   var historyCanvas = $('history'), hg = historyCanvas.getContext('2d');
   var meterCanvas = $('meter'), mg = meterCanvas.getContext('2d');
-  var curveCanvas = $('curve'), cg = curveCanvas.getContext('2d');
   var DB_MIN = -60, DB_MAX = 6;
   var hView = { w: 0, h: 0, dpr: 1, pad: 10 };
-  var cView = { w: 0, h: 0, dpr: 1, pad: 22 };
   function hy(db){ return (hView.h - hView.pad) - (db - DB_MIN) / (DB_MAX - DB_MIN) * (hView.h - hView.pad - 10); }
-  function cx(db){ return cView.pad + (db - DB_MIN) / (DB_MAX - DB_MIN) * (cView.w - cView.pad - 10); }
-  function cy(db){ return (cView.h - cView.pad) - (db - DB_MIN) / (DB_MAX - DB_MIN) * (cView.h - cView.pad - 10); }
+  function hx(db){ return (db - DB_MIN) / (DB_MAX - DB_MIN) * hView.w; }   // the curve's own axis, sharing the screen's width
+
   var curvePoints = null, curveValid = false;
   function invalidateCurve(){ curveValid = false; }
   function buildCurve(){
-    var n = Math.max(2, Math.round(cView.w));
+    var n = Math.max(2, Math.round(hView.w));
     var pts = new Float32Array(n);
     for (var i = 0; i < n; i++) {
       var inDb = DB_MIN + (i / (n - 1)) * (DB_MAX - DB_MIN);
@@ -777,9 +771,6 @@ if (typeof registerProcessor === 'function') {
     historyCanvas.width = Math.round(r.width * dpr); historyCanvas.height = Math.round(r.height * dpr);
     var mr = meterCanvas.getBoundingClientRect();
     meterCanvas.width = Math.round(mr.width * dpr); meterCanvas.height = Math.round(mr.height * dpr);
-    var cr = curveCanvas.getBoundingClientRect();
-    cView.dpr = dpr; cView.w = cr.width; cView.h = cr.height;
-    curveCanvas.width = Math.round(cr.width * dpr); curveCanvas.height = Math.round(cr.height * dpr);
     invalidateCurve(); requestDraw();
   }
 
@@ -818,44 +809,24 @@ if (typeof registerProcessor === 'function') {
     historyPath(histOut, W);
     hg.strokeStyle = T.curve; hg.lineWidth = 2; hg.shadowColor = T.curveGlow; hg.shadowBlur = 5;
     hg.stroke(); hg.shadowBlur = 0;
-  }
 
-  function drawCurve(){
-    var dpr = cView.dpr, W = cView.w, H = cView.h;
-    if (!W) return;
-    cg.setTransform(dpr, 0, 0, dpr, 0, 0);
-    cg.fillStyle = T.bgBottom; cg.fillRect(0, 0, W, H);
-
-    cg.strokeStyle = T.gridMinor; cg.lineWidth = 1;
-    for (var db = DB_MIN; db <= DB_MAX; db += 12) {
-      cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(db)); cg.lineTo(cx(DB_MAX), cy(db)); cg.stroke();
-      cg.beginPath(); cg.moveTo(cx(db), cy(DB_MIN)); cg.lineTo(cx(db), cy(DB_MAX)); cg.stroke();
-      cg.fillStyle = T.axisLabel; cg.font = '9px "IBM Plex Mono", monospace'; cg.textBaseline = 'middle';
-      cg.textAlign = 'right'; cg.fillText(db + '', cx(DB_MIN) - 4, cy(db));
-    }
-    cg.strokeStyle = T.zero; cg.beginPath(); cg.moveTo(cx(0), cy(DB_MIN)); cg.lineTo(cx(0), cy(DB_MAX)); cg.stroke();
-    cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(0)); cg.lineTo(cx(DB_MAX), cy(0)); cg.stroke();
-
-    // the unmodified 1:1 line
-    cg.strokeStyle = T.unity; cg.setLineDash([3, 4]); cg.lineWidth = 1;
-    cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(DB_MIN)); cg.lineTo(cx(DB_MAX), cy(DB_MAX)); cg.stroke();
-    cg.setLineDash([]);
-
-    if (!curveValid || !curvePoints || curvePoints.length !== Math.max(2, Math.round(cView.w))) buildCurve();
-    cg.strokeStyle = T.curve; cg.lineWidth = 2; cg.shadowColor = T.curveGlow; cg.shadowBlur = 5;
-    cg.beginPath();
+    // the transfer curve, overlaid on the same field (its own axis is input level,
+    // sharing the screen's width, not a second graph -- like Pro-C3's)
+    if (!curveValid || !curvePoints || curvePoints.length !== Math.max(2, Math.round(W))) buildCurve();
+    hg.strokeStyle = T.transfer; hg.lineWidth = 2; hg.shadowColor = T.transfer; hg.shadowBlur = 4;
+    hg.beginPath();
     for (var i = 0; i < curvePoints.length; i++) {
       var inDb = DB_MIN + (i / (curvePoints.length - 1)) * (DB_MAX - DB_MIN);
-      var x = cx(inDb), y = cy(Math.max(DB_MIN, Math.min(DB_MAX, curvePoints[i])));
-      if (i === 0) cg.moveTo(x, y); else cg.lineTo(x, y);
+      var x = hx(inDb), y = hy(Math.max(DB_MIN, Math.min(DB_MAX, curvePoints[i])));
+      if (i === 0) hg.moveTo(x, y); else hg.lineTo(x, y);
     }
-    cg.stroke(); cg.shadowBlur = 0;
+    hg.stroke(); hg.shadowBlur = 0;
 
-    // the threshold, marked on its own curve (like Pro-C3's draggable knee/threshold dots --
+    // the threshold, marked on the curve (like Pro-C3's draggable knee/threshold dots --
     // not draggable yet, that's follow-up work)
     var tg = compGainReductionDb(params.thresholdDb, params);
-    cg.fillStyle = T.dot;
-    cg.beginPath(); cg.arc(cx(params.thresholdDb), cy(params.thresholdDb - tg + params.makeupDb), 4, 0, Math.PI * 2); cg.fill();
+    hg.fillStyle = T.transfer;
+    hg.beginPath(); hg.arc(hx(params.thresholdDb), hy(params.thresholdDb - tg + params.makeupDb), 4, 0, Math.PI * 2); hg.fill();
   }
 
   var meterShown = [0, 0, 0, 0], grShown = 0;
@@ -903,7 +874,7 @@ if (typeof registerProcessor === 'function') {
     var live = isPowered() && ctx && ctx.state === 'running';
     if (live) for (var i = 0; i < 4; i++) meterShown[i] *= 0.96;
     if (live) grShown *= 0.9;
-    drawHistory(); drawMeter(); drawCurve();
+    drawHistory(); drawMeter();
     if (live) requestDraw();
   }
 

@@ -49,12 +49,12 @@ Click a knob's value to type one: `-18`, `4`, `6.5`.
 
 ## Display
 
-The main screen is a scrolling history of the last few seconds: input level
-behind (filled, dim) and output level in front (bright) — the clearest way
-to see how hard the compressor is actually working on the sound right now.
-The meter on the right shows input and output level, and gain reduction
-(GR) filling down from the top. Below the screen, TRANSFER is the
-compressor's input/output curve, with the threshold marked on it.
+One field, like Pro-C3's: a scrolling history of the last few seconds —
+input level behind (filled, dim), output level in front (bright), the
+clearest way to see how hard the compressor is actually working on the
+sound right now — with the compressor's own input/output curve overlaid on
+top (green), the threshold marked on it. The meter on the right shows
+input and output level, and gain reduction (GR) filling down from the top.
 
 ## Roadmap
 
