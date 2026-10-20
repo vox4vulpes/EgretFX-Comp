@@ -49,12 +49,12 @@ Click a knob's value to type one: `-18`, `4`, `6.5`.
 
 ## Display
 
-The curve plots input level against output level: the dashed diagonal is
-unchanged (1:1), the solid curve is what the compressor actually does right
-now, and the dot is where the sound playing this instant actually sits. The
-meter on the right shows input and output level, and gain reduction (GR)
-filling down from the top. The SCOPE strip below is a live oscilloscope: the
-raw waveform going in (dim) and the compressed one coming out (bright).
+The main screen is a scrolling history of the last few seconds: input level
+behind (filled, dim) and output level in front (bright) — the clearest way
+to see how hard the compressor is actually working on the sound right now.
+The meter on the right shows input and output level, and gain reduction
+(GR) filling down from the top. Below the screen, TRANSFER is the
+compressor's input/output curve, with the threshold marked on it.
 
 ## Roadmap
 

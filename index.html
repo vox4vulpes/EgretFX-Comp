@@ -74,11 +74,11 @@
   .tb.is-on .power-led{background:var(--acc); box-shadow:0 0 6px var(--acc);}
 
   .screen{position:relative; aspect-ratio:950/460; min-height:280px; display:flex;}
-  #curve{flex:1; min-width:0; height:100%; display:block; outline:none;}
+  #history{flex:1; min-width:0; height:100%; display:block; outline:none;}
   #meter{width:76px; height:100%; display:block; flex:none; border-left:1px solid var(--edge);}
-  .scope-wrap{position:relative; height:70px; flex:none; border-top:1px solid var(--edge); border-bottom:1px solid var(--edge); background:var(--scr);}
-  #scope{width:100%; height:100%; display:block;}
-  .scope-label{position:absolute; left:8px; top:4px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; color:var(--fg-soft); pointer-events:none;}
+  .curve-wrap{position:relative; height:150px; flex:none; border-top:1px solid var(--edge); background:var(--scr);}
+  #curve{width:100%; height:100%; display:block;}
+  .curve-label{position:absolute; left:8px; top:4px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:.1em; color:var(--fg-soft); pointer-events:none;}
 
   .knob{display:flex; flex-direction:column; align-items:center; gap:2px; width:66px;}
   .knob:focus-visible{outline:2px solid var(--focus); outline-offset:2px; border-radius:8px;}
@@ -190,10 +190,10 @@
   </header>
 
   <div class="screen" id="screen">
-    <canvas id="curve" tabindex="0" aria-label="The compressor's input/output transfer curve."></canvas>
+    <canvas id="history" tabindex="0" aria-label="Input and output level over the last few seconds."></canvas>
     <canvas id="meter" aria-hidden="true"></canvas>
   </div>
-  <div class="scope-wrap"><span class="scope-label">SCOPE</span><canvas id="scope" aria-label="The live input and output waveform."></canvas></div>
+  <div class="curve-wrap"><span class="curve-label">TRANSFER</span><canvas id="curve" aria-label="The compressor's input/output transfer curve."></canvas></div>
 
   <footer class="bar bottom" id="knob-row"></footer>
 </div>
@@ -369,14 +369,16 @@ if (typeof registerProcessor === 'function') {
       zero: 'rgba(168,112,10,0.45)', curve: '#2a241d', curveGlow: 'rgba(42,36,29,0.25)', unity: 'rgba(42,36,29,0.3)',
       dot: '#b85540', axisLabel: 'rgba(42,36,29,0.55)',
       meterBg: '#ece4cf', meterTrack: 'rgba(42,36,29,0.08)', meterLow: '#c9a35a', meterMid: '#a8700a', meterTop: '#6b4a10',
-      meterText: 'rgba(42,36,29,0.75)', gr: '#b85540'
+      meterText: 'rgba(42,36,29,0.75)', gr: '#b85540',
+      histIn: 'rgba(42,36,29,0.12)', histInLine: 'rgba(42,36,29,0.4)'
     },
     dark: {
       bgTop: '#1d170c', bgBottom: '#120e06', gridMajor: 'rgba(240,168,48,0.15)', gridMinor: 'rgba(240,168,48,0.06)',
       zero: 'rgba(240,168,48,0.3)', curve: '#f2ecd9', curveGlow: 'rgba(242,236,217,0.55)', unity: 'rgba(242,236,217,0.28)',
       dot: '#e8846a', axisLabel: 'rgba(242,236,217,0.5)',
       meterBg: '#120e06', meterTrack: 'rgba(240,168,48,0.08)', meterLow: '#7a5a18', meterMid: '#f0a830', meterTop: '#f2ecd9',
-      meterText: 'rgba(242,236,217,0.75)', gr: '#e8846a'
+      meterText: 'rgba(242,236,217,0.75)', gr: '#e8846a',
+      histIn: 'rgba(242,236,217,0.10)', histInLine: 'rgba(242,236,217,0.32)'
     }
   };
   var T = THEMES.dark;
@@ -392,7 +394,7 @@ if (typeof registerProcessor === 'function') {
   }
 
   // ---------- audio ----------
-  var ctx = null, node = null, inputBus = null, preAna = null, postAna = null, preBuf = null, postBuf = null;
+  var ctx = null, node = null, inputBus = null;
   function sendParams(){
     if (node) node.port.postMessage({ type: 'params', p: Object.assign({}, params, { power: !bypassed }) });
   }
@@ -400,10 +402,6 @@ if (typeof registerProcessor === 'function') {
     if (ctx) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     inputBus = ctx.createGain();
-    preAna = ctx.createAnalyser(); preAna.fftSize = 1024;
-    postAna = ctx.createAnalyser(); postAna.fftSize = 1024;
-    preBuf = new Float32Array(preAna.fftSize); postBuf = new Float32Array(postAna.fftSize);
-    inputBus.connect(preAna);
     if (!ctx.audioWorklet) { $('no-worklet').hidden = false; return; }
     var source = $('dsp-shared').textContent + $('dsp-engine').textContent;
     // A data: URL rather than a blob: Chrome refuses blob worklets on pages opened from a file.
@@ -413,7 +411,6 @@ if (typeof registerProcessor === 'function') {
                                                         channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers' });
       inputBus.connect(node);
       node.connect(ctx.destination);
-      node.connect(postAna);
       node.port.onmessage = function(e){ if (e.data.type === 'meter') onMeter(e.data.m); };
       sendParams();
       if (src.playing) startSource();
@@ -750,19 +747,21 @@ if (typeof registerProcessor === 'function') {
   // Every change: tell the engine, remember it, redraw.
   function changed(){ sendParams(); save(); renderKnobs(); invalidateCurve(); }
 
-  // ---------- the display: the transfer curve and the meter ----------
-  var curveCanvas = $('curve'), cg = curveCanvas.getContext('2d');
+  // ---------- the display: a scrolling level history (the main screen, like Pro-C3's),
+  // a small transfer-curve editor below it, and the meter ----------
+  var historyCanvas = $('history'), hg = historyCanvas.getContext('2d');
   var meterCanvas = $('meter'), mg = meterCanvas.getContext('2d');
-  var scopeCanvas = $('scope'), sg = scopeCanvas.getContext('2d');
-  var scopeView = { w: 0, h: 0, dpr: 1 };
+  var curveCanvas = $('curve'), cg = curveCanvas.getContext('2d');
   var DB_MIN = -60, DB_MAX = 6;
-  var view = { w: 0, h: 0, dpr: 1, pad: 28 };
-  function cx(db){ return view.pad + (db - DB_MIN) / (DB_MAX - DB_MIN) * (view.w - view.pad - 10); }
-  function cy(db){ return (view.h - view.pad) - (db - DB_MIN) / (DB_MAX - DB_MIN) * (view.h - view.pad - 10); }
+  var hView = { w: 0, h: 0, dpr: 1, pad: 10 };
+  var cView = { w: 0, h: 0, dpr: 1, pad: 22 };
+  function hy(db){ return (hView.h - hView.pad) - (db - DB_MIN) / (DB_MAX - DB_MIN) * (hView.h - hView.pad - 10); }
+  function cx(db){ return cView.pad + (db - DB_MIN) / (DB_MAX - DB_MIN) * (cView.w - cView.pad - 10); }
+  function cy(db){ return (cView.h - cView.pad) - (db - DB_MIN) / (DB_MAX - DB_MIN) * (cView.h - cView.pad - 10); }
   var curvePoints = null, curveValid = false;
   function invalidateCurve(){ curveValid = false; }
   function buildCurve(){
-    var n = Math.max(2, Math.round(view.w));
+    var n = Math.max(2, Math.round(cView.w));
     var pts = new Float32Array(n);
     for (var i = 0; i < n; i++) {
       var inDb = DB_MIN + (i / (n - 1)) * (DB_MAX - DB_MIN);
@@ -772,59 +771,67 @@ if (typeof registerProcessor === 'function') {
     curvePoints = pts; curveValid = true;
   }
   function fitScreen(){
-    var dpr = window.devicePixelRatio || 1, r = curveCanvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1, r = historyCanvas.getBoundingClientRect();
     if (!r.width) return;
-    view.dpr = dpr; view.w = r.width; view.h = r.height;
-    curveCanvas.width = Math.round(r.width * dpr); curveCanvas.height = Math.round(r.height * dpr);
+    hView.dpr = dpr; hView.w = r.width; hView.h = r.height;
+    historyCanvas.width = Math.round(r.width * dpr); historyCanvas.height = Math.round(r.height * dpr);
     var mr = meterCanvas.getBoundingClientRect();
     meterCanvas.width = Math.round(mr.width * dpr); meterCanvas.height = Math.round(mr.height * dpr);
-    var sr = scopeCanvas.getBoundingClientRect();
-    scopeView.dpr = dpr; scopeView.w = sr.width; scopeView.h = sr.height;
-    scopeCanvas.width = Math.round(sr.width * dpr); scopeCanvas.height = Math.round(sr.height * dpr);
+    var cr = curveCanvas.getBoundingClientRect();
+    cView.dpr = dpr; cView.w = cr.width; cView.h = cr.height;
+    curveCanvas.width = Math.round(cr.width * dpr); curveCanvas.height = Math.round(cr.height * dpr);
     invalidateCurve(); requestDraw();
   }
-  // A live oscilloscope: the raw waveform going in (dim) and coming out (bright), redrawn from
-  // two AnalyserNodes each frame -- the classic Web Audio scope technique, no engine changes needed.
-  function drawScope(){
-    var dpr = scopeView.dpr, W = scopeView.w, H = scopeView.h;
-    if (!W || !preAna) return;
-    sg.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sg.fillStyle = T.bgBottom; sg.fillRect(0, 0, W, H);
-    sg.strokeStyle = T.gridMinor; sg.beginPath(); sg.moveTo(0, H / 2); sg.lineTo(W, H / 2); sg.stroke();
-    function plot(buf, color, alpha){
-      sg.strokeStyle = color; sg.globalAlpha = alpha; sg.lineWidth = 1.5; sg.beginPath();
-      var n = buf.length;
-      for (var i = 0; i < n; i++) {
-        var x = i / (n - 1) * W, y = H / 2 - buf[i] * (H / 2 - 4);
-        if (i === 0) sg.moveTo(x, y); else sg.lineTo(x, y);
-      }
-      sg.stroke(); sg.globalAlpha = 1;
-    }
-    if (isPowered() && ctx && ctx.state === 'running') {
-      preAna.getFloatTimeDomainData(preBuf); postAna.getFloatTimeDomainData(postBuf);
-      plot(preBuf, T.unity, 0.6);
-      plot(postBuf, T.curve, 1);
+
+  // The level history: input (filled, dim) and output (bright line) over the last few
+  // seconds -- like Pro-C3's main display, the clearest way to see what's happening.
+  var HIST_LEN = 180;   // the meter arrives roughly 30 times a second, so this is ~6s
+  var histIn = new Array(HIST_LEN).fill(DB_MIN), histOut = new Array(HIST_LEN).fill(DB_MIN);
+  function historyPath(hist, W){
+    hg.beginPath();
+    for (var i = 0; i < hist.length; i++) {
+      var x = i / (hist.length - 1) * W, y = hy(Math.max(DB_MIN, Math.min(DB_MAX, hist[i])));
+      if (i === 0) hg.moveTo(x, y); else hg.lineTo(x, y);
     }
   }
+  function drawHistory(){
+    var dpr = hView.dpr, W = hView.w, H = hView.h;
+    if (!W) return;
+    hg.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var grd = hg.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, T.bgTop); grd.addColorStop(1, T.bgBottom);
+    hg.fillStyle = grd; hg.fillRect(0, 0, W, H);
+
+    hg.strokeStyle = T.gridMajor; hg.lineWidth = 1;
+    for (var db = DB_MIN; db <= DB_MAX; db += 12) {
+      hg.beginPath(); hg.moveTo(0, hy(db)); hg.lineTo(W, hy(db)); hg.stroke();
+      hg.fillStyle = T.axisLabel; hg.font = '9px "IBM Plex Mono", monospace'; hg.textBaseline = 'bottom'; hg.textAlign = 'left';
+      hg.fillText(db + '', 4, hy(db) - 2);
+    }
+    hg.strokeStyle = T.zero; hg.beginPath(); hg.moveTo(0, hy(0)); hg.lineTo(W, hy(0)); hg.stroke();
+
+    historyPath(histIn, W);
+    hg.lineTo(W, hy(DB_MIN)); hg.lineTo(0, hy(DB_MIN)); hg.closePath();
+    hg.fillStyle = T.histIn; hg.fill();
+    hg.strokeStyle = T.histInLine; hg.lineWidth = 1; historyPath(histIn, W); hg.stroke();
+
+    historyPath(histOut, W);
+    hg.strokeStyle = T.curve; hg.lineWidth = 2; hg.shadowColor = T.curveGlow; hg.shadowBlur = 5;
+    hg.stroke(); hg.shadowBlur = 0;
+  }
+
   function drawCurve(){
-    var dpr = view.dpr, W = view.w, H = view.h;
+    var dpr = cView.dpr, W = cView.w, H = cView.h;
     if (!W) return;
     cg.setTransform(dpr, 0, 0, dpr, 0, 0);
-    var grd = cg.createLinearGradient(0, 0, 0, H);
-    grd.addColorStop(0, T.bgTop); grd.addColorStop(1, T.bgBottom);
-    cg.fillStyle = grd; cg.fillRect(0, 0, W, H);
+    cg.fillStyle = T.bgBottom; cg.fillRect(0, 0, W, H);
 
     cg.strokeStyle = T.gridMinor; cg.lineWidth = 1;
-    for (var db = DB_MIN; db <= DB_MAX; db += 6) {
-      var major = db % 12 === 0;
-      cg.strokeStyle = major ? T.gridMajor : T.gridMinor;
+    for (var db = DB_MIN; db <= DB_MAX; db += 12) {
       cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(db)); cg.lineTo(cx(DB_MAX), cy(db)); cg.stroke();
       cg.beginPath(); cg.moveTo(cx(db), cy(DB_MIN)); cg.lineTo(cx(db), cy(DB_MAX)); cg.stroke();
-      if (major) {
-        cg.fillStyle = T.axisLabel; cg.font = '9px "IBM Plex Mono", monospace'; cg.textBaseline = 'middle';
-        cg.textAlign = 'right'; cg.fillText(db + '', cx(DB_MIN) - 4, cy(db));
-        cg.textAlign = 'center'; cg.fillText(db + '', cx(db), cy(DB_MIN) + 10);
-      }
+      cg.fillStyle = T.axisLabel; cg.font = '9px "IBM Plex Mono", monospace'; cg.textBaseline = 'middle';
+      cg.textAlign = 'right'; cg.fillText(db + '', cx(DB_MIN) - 4, cy(db));
     }
     cg.strokeStyle = T.zero; cg.beginPath(); cg.moveTo(cx(0), cy(DB_MIN)); cg.lineTo(cx(0), cy(DB_MAX)); cg.stroke();
     cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(0)); cg.lineTo(cx(DB_MAX), cy(0)); cg.stroke();
@@ -834,8 +841,8 @@ if (typeof registerProcessor === 'function') {
     cg.beginPath(); cg.moveTo(cx(DB_MIN), cy(DB_MIN)); cg.lineTo(cx(DB_MAX), cy(DB_MAX)); cg.stroke();
     cg.setLineDash([]);
 
-    if (!curveValid || !curvePoints || curvePoints.length !== Math.max(2, Math.round(view.w))) buildCurve();
-    cg.strokeStyle = T.curve; cg.lineWidth = 2; cg.shadowColor = T.curveGlow; cg.shadowBlur = 6;
+    if (!curveValid || !curvePoints || curvePoints.length !== Math.max(2, Math.round(cView.w))) buildCurve();
+    cg.strokeStyle = T.curve; cg.lineWidth = 2; cg.shadowColor = T.curveGlow; cg.shadowBlur = 5;
     cg.beginPath();
     for (var i = 0; i < curvePoints.length; i++) {
       var inDb = DB_MIN + (i / (curvePoints.length - 1)) * (DB_MAX - DB_MIN);
@@ -844,24 +851,23 @@ if (typeof registerProcessor === 'function') {
     }
     cg.stroke(); cg.shadowBlur = 0;
 
-    // the operating point: what's playing right now
-    if (dotIn > DB_MIN + 0.5) {
-      cg.fillStyle = T.dot;
-      cg.beginPath(); cg.arc(cx(Math.max(DB_MIN, Math.min(DB_MAX, dotIn))), cy(Math.max(DB_MIN, Math.min(DB_MAX, dotOut))), 4, 0, Math.PI * 2); cg.fill();
-    }
+    // the threshold, marked on its own curve (like Pro-C3's draggable knee/threshold dots --
+    // not draggable yet, that's follow-up work)
+    var tg = compGainReductionDb(params.thresholdDb, params);
+    cg.fillStyle = T.dot;
+    cg.beginPath(); cg.arc(cx(params.thresholdDb), cy(params.thresholdDb - tg + params.makeupDb), 4, 0, Math.PI * 2); cg.fill();
   }
 
   var meterShown = [0, 0, 0, 0], grShown = 0;
-  var dotIn = DB_MIN, dotOut = DB_MIN, dotTarget = [DB_MIN, DB_MIN];
   function onMeter(m){
     for (var i = 0; i < 4; i++) meterShown[i] = Math.max(m[i], meterShown[i] * 0.8);
     grShown = Math.max(m[4], grShown * 0.8);
     var inLvl = Math.max(m[0], m[1]), outLvl = Math.max(m[2], m[3]);
-    dotTarget[0] = inLvl > 1e-6 ? 20 * Math.log10(inLvl) : DB_MIN;
-    dotTarget[1] = outLvl > 1e-6 ? 20 * Math.log10(outLvl) : DB_MIN;
+    histIn.push(inLvl > 1e-6 ? 20 * Math.log10(inLvl) : DB_MIN); histIn.shift();
+    histOut.push(outLvl > 1e-6 ? 20 * Math.log10(outLvl) : DB_MIN); histOut.shift();
   }
   function drawMeter(){
-    var dpr = view.dpr, W = meterCanvas.width / dpr, H = meterCanvas.height / dpr;
+    var dpr = hView.dpr, W = meterCanvas.width / dpr, H = meterCanvas.height / dpr;
     if (!W) return;
     mg.setTransform(dpr, 0, 0, dpr, 0, 0);
     mg.fillStyle = T.meterBg; mg.fillRect(0, 0, W, H);
@@ -895,10 +901,9 @@ if (typeof registerProcessor === 'function') {
   function frame(){
     drawQueued = false;
     var live = isPowered() && ctx && ctx.state === 'running';
-    dotIn += (dotTarget[0] - dotIn) * 0.3; dotOut += (dotTarget[1] - dotOut) * 0.3;
     if (live) for (var i = 0; i < 4; i++) meterShown[i] *= 0.96;
     if (live) grShown *= 0.9;
-    drawCurve(); drawMeter(); drawScope();
+    drawHistory(); drawMeter(); drawCurve();
     if (live) requestDraw();
   }
 
