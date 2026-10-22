@@ -52,6 +52,15 @@
   .plugin:fullscreen .screen{aspect-ratio:auto; flex:1;}
   .bar{ display:flex; align-items:center; gap:6px; padding:0 10px; height:38px; flex:none; background:linear-gradient(var(--bar-hi), var(--bar)); font-size:12px; }
   .bar.bottom{height:auto; padding:12px 14px; justify-content:center; flex-wrap:wrap; gap:16px; background:linear-gradient(var(--bar), var(--bar-lo)); border-top:1px solid var(--edge);}
+  .bar.row2{padding:8px 14px; border-top:1px solid var(--edge); gap:14px;}
+  .bar.row3{padding:8px 14px; border-top:1px solid var(--edge); gap:14px;}
+  .bar.is-hidden{display:none;}
+  .row3-label{font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.12em; color:var(--fg-soft); text-transform:uppercase;}
+  .style-row{display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center;}
+  .style-btns{display:flex; gap:2px; flex-wrap:wrap; justify-content:center;}
+  .style-btns .tb{padding:5px 9px;}
+  .style-btns .tb.is-on{background:var(--acc); color:var(--on-acc);}
+  .sc-knobs{display:flex; gap:10px; flex-wrap:wrap; justify-content:center;}
   .bar.top{border-bottom:1px solid var(--edge);}
   .bar .spacer{flex:1;}
   .tb{
@@ -72,6 +81,9 @@
   @media (prefers-reduced-motion:reduce){ .bird.is-diving{animation:none;} }
   .power-led{width:9px; height:9px; border-radius:50%; background:var(--track);}
   .tb.is-on .power-led{background:var(--acc); box-shadow:0 0 6px var(--acc);}
+  .preset-nav{display:flex; align-items:center; gap:2px; min-width:0;}
+  .preset-btn{min-width:160px; max-width:260px; justify-content:center; overflow:hidden; text-overflow:ellipsis;}
+  .preset-btn span{overflow:hidden; text-overflow:ellipsis;}
 
   .screen{position:relative; aspect-ratio:950/460; min-height:280px; display:flex;}
   #history{flex:1; min-width:0; height:100%; display:block; outline:none;}
@@ -89,6 +101,14 @@
 
   .menu{ position:fixed; z-index:50; min-width:170px; max-height:70vh; overflow-y:auto; background:var(--float-solid); border:1px solid var(--float-border); border-radius:6px; padding:4px; box-shadow:0 10px 30px var(--float-shadow); color:var(--fg); font-size:12px; }
   .menu[hidden]{display:none;}
+  .mi{display:flex; align-items:center; gap:8px; padding:5px 10px 5px 6px; border-radius:4px; cursor:pointer; white-space:nowrap; border:none; background:none; color:inherit; width:100%; text-align:left; font-size:12px;}
+  .mi:hover{background:var(--acc-hover);}
+  .mi[disabled]{opacity:.4; cursor:default; background:none;}
+  .mi .chk{width:12px; color:var(--acc); flex:none; text-align:center;}
+  .mh{font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--fg-soft); padding:6px 8px 2px;}
+  .ms{height:1px; background:var(--float-border); margin:4px 2px;}
+  .menu input{width:100%; background:var(--input-bg); color:var(--fg); border:1px solid var(--acc-soft); border-radius:4px; padding:5px 7px; font-size:12px; outline:none;}
+  .status{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--fg-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;}
 
   .help{font-size:12px; color:var(--page-ink); margin:0;}
   .no-worklet{font-size:12px; color:var(--coral); margin:0;}
@@ -126,7 +146,13 @@
   .credit a{color:inherit;}
 
   @media (max-width:1100px){ .stage{flex-direction:column; align-items:stretch;} .player{position:static; flex:none;} .track-list{max-height:160px;} }
-  @media (max-width:640px){ .logo-sub{display:none;} .screen{aspect-ratio:auto; height:52vh;} .bar.bottom{padding:8px;} }
+  @media (max-width:640px){
+    .logo-sub, .hide-narrow{display:none;}
+    .screen{aspect-ratio:auto; height:52vh;}
+    .bar.bottom{padding:8px;}
+    .bar.top{flex-wrap:wrap; height:auto; padding:6px 8px;}
+    .preset-btn{min-width:110px;}
+  }
 </style>
 </head>
 <body>
@@ -144,6 +170,10 @@
     <input type="file" id="src-file" accept="audio/*" hidden>
   </div>
   <p class="src-status" id="src-status" aria-live="polite"></p>
+  <p class="pl-label">Sidechain</p>
+  <div class="chip-row" id="sc-chips" role="group" aria-label="Sidechain source"></div>
+  <input type="file" id="sc-file" accept="audio/*" hidden>
+  <p class="src-status" id="sc-status" aria-live="polite"></p>
   <p class="pl-label">Tracks</p>
   <div class="np">
     <div class="np-name" id="np-name">&mdash;</div>
@@ -167,18 +197,30 @@
   <header class="bar top">
     <div class="logo">
       <span class="logo-name">EGRET <b>COMP</b></span>
-      <span class="logo-sub" id="brand-sub"><span class="jp" lang="ja">翡翠</span> · Compressor</span>
-      <button class="bird" id="bird" type="button" aria-label="Kawasemi, the kingfisher" title="翡翠">
+      <span class="logo-sub" id="brand-sub"><span class="jp" lang="ja">白鳥</span> · Compressor</span>
+      <button class="bird" id="bird" type="button" aria-label="Hakucho, the swan" title="白鳥">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-          <path d="M6 9.5c0-2.6 2.1-4.5 4.7-4.5 2.3 0 4 1.5 4.4 3.5l.4 2.3c.4 2.2 1.9 3.6 3.9 4.6l-1.2.9c-1.1-.2-2.2-.6-3.1-1.2-.9 2.3-3.3 3.6-6 3.1-2.4-.5-3.9-2.6-3.6-5z"
-                fill="#2a8fc4" stroke="#0d0a04" stroke-width=".7" stroke-linejoin="round"/>
-          <path d="M7.4 11.4c.6 2.6 2.6 4.3 5.4 3.9 1-.2 1.8-.6 2.4-1.3-1.9.2-4.4-.6-5.9-2.7z" fill="#e07b2a"/>
-          <path d="M6.6 9.6c.6.6 1.6.8 2.4.5-.2.7-.9 1.2-1.7 1.2-.5-.4-.7-1-.7-1.7z" fill="#fbf8ef"/>
-          <path d="M6.2 8.4L1 9.3l5.4.5z" style="fill:var(--fg)"/>
-          <circle cx="8.2" cy="7.6" r=".55" fill="#0d0a04"/>
-          <path d="M11 17.6l-.4 2.6M12.6 17.7l.2 2.5" stroke="#d9452f" stroke-width=".9" stroke-linecap="round"/>
+          <ellipse cx="12.5" cy="16.5" rx="5.2" ry="3.6" fill="#fbf8ef" stroke="#2a241d" stroke-width=".55"/>
+          <path d="M9.5 14.8C7.6 12 7.8 8.3 10.5 6.2 11.9 5.1 13 5.3 13.2 4.1 13.3 3.4 12.7 3 12.1 3.3"
+                fill="none" stroke="#fbf8ef" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M9.5 14.8C7.6 12 7.8 8.3 10.5 6.2 11.9 5.1 13 5.3 13.2 4.1 13.3 3.4 12.7 3 12.1 3.3"
+                fill="none" stroke="#2a241d" stroke-width=".55" stroke-linecap="round"/>
+          <path d="M8.8 17.2c1.7-1 3.9-1 5.6.3" fill="none" stroke="#d9cfb5" stroke-width=".6" stroke-linecap="round"/>
+          <circle cx="10.6" cy="6.3" r="1.4" fill="#fbf8ef" stroke="#2a241d" stroke-width=".5"/>
+          <path d="M9.3 6.1L6.8 5.6L9.1 7.2Z" fill="#e8a23c"/>
+          <circle cx="10.9" cy="5.9" r=".32" fill="#2a241d"/>
         </svg>
       </button>
+    </div>
+    <button class="tb" id="undo" type="button" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 16 16"><path d="M6 3L2 7l4 4M2.5 7H10a4 4 0 010 8H8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="tb" id="redo" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><svg viewBox="0 0 16 16"><path d="M10 3l4 4-4 4M13.5 7H6a4 4 0 000 8h2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button class="tb" id="ab" type="button" title="Switch between settings A and B"><span class="dim">A/B</span> <span id="ab-cur">A</span></button>
+    <button class="tb hide-narrow" id="ab-copy" type="button" title="Copy this setting to the other one">Copy</button>
+    <span class="spacer"></span>
+    <div class="preset-nav">
+      <button class="tb" id="preset-prev" type="button" aria-label="Previous preset">&lsaquo;</button>
+      <button class="tb preset-btn" id="preset-btn" type="button" aria-haspopup="menu" title="Presets"><span id="preset-name">Default</span></button>
+      <button class="tb" id="preset-next" type="button" aria-label="Next preset">&rsaquo;</button>
     </div>
     <span class="spacer"></span>
     <button class="tb" id="theme-btn" type="button" title="Light or dark" aria-label="Switch between light and dark"></button>
@@ -192,9 +234,18 @@
   </div>
 
   <footer class="bar bottom" id="knob-row"></footer>
+  <footer class="bar bottom row2" id="knob-row2">
+    <div class="style-row" id="style-row"></div>
+    <span class="status" id="info" aria-live="polite"></span>
+  </footer>
+  <footer class="bar bottom row3 is-hidden" id="sc-row">
+    <span class="row3-label">SIDECHAIN</span>
+    <div class="sc-knobs" id="sc-knobs"></div>
+    <button class="tb" id="sc-listen" type="button" title="Listen to what the sidechain filter hears, instead of the compressed sound">LISTEN</button>
+  </footer>
 </div>
 <p class="no-worklet" id="no-worklet" hidden>This browser can't run Egret Comp (it needs AudioWorklet). Try a current Chrome, Edge, Firefox or Safari.</p>
-<p class="help">THRESH sets the level above which the signal is turned down; RATIO how much; KNEE softens the onset around the threshold; ATTACK and RELEASE how fast gain reduction grabs and lets go; MAKEUP trims the output; MIX blends the compressed sound back with the dry signal (parallel compression at low settings). The curve shows input level in, output level out, with a moving dot for what's playing right now; the meter on the right shows input, output and gain reduction (GR, from the top). Click a knob's value to type one. <kbd>Space</kbd> plays the source.</p>
+<p class="help">THRESH sets the level above which the signal is turned down; RATIO how much; the STYLE button picks a detector/topology character; ATTACK and RELEASE how fast gain reduction grabs and lets go (AUTO blends in a program-dependent release); MAKEUP trims the output, or let AUTO GAIN work it out; MIX blends the compressed sound back with the dry signal (parallel compression at low settings). KNEE softens the onset around the threshold; RANGE caps how much reduction can happen; LOOKAHEAD lets the detector catch a transient before it's heard, at the cost of a little latency; LINK ties the two channels' detectors together. SIDECHAIN routes another sound (pick one in the player) to the detector instead of the input, filtered by its own HPF and bell. Drag the dot on the curve to set threshold and knee. The meter on the right shows input, output and gain reduction (GR, from the top). Click a knob's value to type one. <kbd>Space</kbd> plays the source.</p>
 </div>
 </div>
 
@@ -207,8 +258,35 @@
 function makeDefaults(){
   return {
     thresholdDb: -18, ratio: 4, kneeDb: 6, attackMs: 10, releaseMs: 120,
-    makeupDb: 0, mixPct: 100, rangeDb: 60
+    makeupDb: 0, mixPct: 100, rangeDb: 60,
+    lookaheadMs: 0, stereoLinkPct: 100,
+    autoRelease: false, autoGain: false,
+    sidechainOn: false, scHpfHz: 20, scBellHz: 1000, scBellDb: 0, scBellQ: 1, scListen: false,
+    style: 'clean'
   };
+}
+
+// Each style is a detector/topology/character profile, not a separate algorithm -- one engine,
+// different numbers. fb: feedback (detects the engine's own output) instead of feedforward (the
+// input). blend: peak (0) .. RMS (1) in the detector. kneeMul/kneeFloor: how the knee widens, or
+// has a minimum. attackFloorMs: the fastest attack the style allows, regardless of the knob.
+// relFloor: how much auto-release character is always mixed in, even with Auto Release off;
+// relAlways forces it fully on; fastOnly disables the slow auto-release stage.
+var STYLES = ['clean', 'classic', 'opto', 'vocal', 'mastering', 'bus', 'punch'];
+var STYLE_LABELS = { clean: 'Clean', classic: 'Classic', opto: 'Opto', vocal: 'Vocal', mastering: 'Mastering', bus: 'Bus', punch: 'Punch' };
+var STYLE_PROFILES = {
+  clean:     { fb: false, blend: 0.15, kneeMul: 1,   kneeFloor: 0, attackFloorMs: 0,  relFloor: 0,   relAlways: false, relSlowSec: 1.0, fastOnly: false },
+  classic:   { fb: true,  blend: 0.6,  kneeMul: 1.5, kneeFloor: 0, attackFloorMs: 0,  relFloor: 0.3, relAlways: false, relSlowSec: 1.0, fastOnly: false },
+  opto:      { fb: false, blend: 0.85, kneeMul: 2.0, kneeFloor: 0, attackFloorMs: 15, relFloor: 1,   relAlways: true,  relSlowSec: 1.0, fastOnly: false },
+  vocal:     { fb: false, blend: 0.3,  kneeMul: 1,   kneeFloor: 0, attackFloorMs: 0,  relFloor: 0,   relAlways: false, relSlowSec: 1.0, fastOnly: false },
+  mastering: { fb: false, blend: 0.7,  kneeMul: 1,   kneeFloor: 6, attackFloorMs: 0,  relFloor: 0.4, relAlways: false, relSlowSec: 1.5, fastOnly: false },
+  bus:       { fb: true,  blend: 0.65, kneeMul: 1.2, kneeFloor: 0, attackFloorMs: 0,  relFloor: 0.3, relAlways: false, relSlowSec: 2.0, fastOnly: false },
+  punch:     { fb: false, blend: 0.1,  kneeMul: 0.5, kneeFloor: 0, attackFloorMs: 8,  relFloor: 0,   relAlways: false, relSlowSec: 1.0, fastOnly: true  }
+};
+function styleProfile(style){ return STYLE_PROFILES[style] || STYLE_PROFILES.clean; }
+function effectiveKneeDb(p){
+  var prof = styleProfile(p.style);
+  return Math.max(prof.kneeFloor, p.kneeDb * prof.kneeMul);
 }
 
 // The soft-knee gain-reduction curve (standard log-domain quadratic knee):
@@ -223,13 +301,42 @@ function kneeGainReductionDb(overDb, ratio, kneeDb){
 }
 function compGainReductionDb(levelDb, p){
   var over = levelDb - p.thresholdDb;
-  var gr = kneeGainReductionDb(over, Math.max(1, p.ratio), Math.max(0, p.kneeDb));
+  var gr = kneeGainReductionDb(over, Math.max(1, p.ratio), Math.max(0, effectiveKneeDb(p)));
   return Math.min(gr, Math.max(0, p.rangeDb));
 }
+
+// AUTO GAIN: how much to add back, worked out from the static curve at a reference level (not a
+// live loudness match) -- deterministic, and only needs recomputing when a setting changes.
+var AUTO_GAIN_REF_DB = -18, AUTO_GAIN_COMPENSATION = 0.5;
+function autoGainDb(p){
+  return AUTO_GAIN_COMPENSATION * compGainReductionDb(AUTO_GAIN_REF_DB, p);
+}
+
+// ---------- a plain biquad, for the sidechain filter (RBJ / Audio-EQ-Cookbook forms) ----------
+function Biquad(){ this.z1 = 0; this.z2 = 0; this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; }
+Biquad.prototype.setHpf = function(freq, q, fs){
+  var w0 = 2 * Math.PI * Math.max(1, Math.min(fs * 0.49, freq)) / fs, alpha = Math.sin(w0) / (2 * q), cw = Math.cos(w0);
+  var b0 = (1 + cw) / 2, b1 = -(1 + cw), b2 = (1 + cw) / 2, a0 = 1 + alpha, a1 = -2 * cw, a2 = 1 - alpha;
+  this.b0 = b0 / a0; this.b1 = b1 / a0; this.b2 = b2 / a0; this.a1 = a1 / a0; this.a2 = a2 / a0;
+};
+Biquad.prototype.setPeak = function(freq, gainDb, q, fs){
+  var A = Math.pow(10, gainDb / 40), w0 = 2 * Math.PI * Math.max(1, Math.min(fs * 0.49, freq)) / fs;
+  var alpha = Math.sin(w0) / (2 * q), cw = Math.cos(w0);
+  var b0 = 1 + alpha * A, b1 = -2 * cw, b2 = 1 - alpha * A, a0 = 1 + alpha / A, a1 = -2 * cw, a2 = 1 - alpha / A;
+  this.b0 = b0 / a0; this.b1 = b1 / a0; this.b2 = b2 / a0; this.a1 = a1 / a0; this.a2 = a2 / a0;
+};
+Biquad.prototype.process = function(x){
+  var y = this.b0 * x + this.z1;
+  this.z1 = this.b1 * x - this.a1 * y + this.z2;
+  this.z2 = this.b2 * x - this.a2 * y;
+  return y;
+};
 </script>
 
 <!-- The audio engine: runs in the AudioWorklet; the VST has the same in C++. -->
 <script id="dsp-engine" type="text/plain">
+var MAX_LOOKAHEAD_MS = 20;
+
 function CompEngine(fs){
   this.fs = fs;
   // current (smoothed) and target parameter values
@@ -241,25 +348,75 @@ function CompEngine(fs){
   this.makeup = 0; this.tMakeup = 0;
   this.mix = 1; this.tMix = 1;
   this.range = 60; this.tRange = 60;
+  this.lookaheadMs = 0; this.tLookaheadMs = 0;
+  this.link = 1; this.tLink = 1;
   this.power = 1; this.tPower = 1;
-  // detector and envelope state
-  this.rmsEnv = 0; this.envGr = 0;
-  // peak/RMS blend and the RMS window: fixed for now (style modes change this later)
-  this.detBlend = 0.25;
-  this.rmsCoef = Math.exp(-1 / (0.01 * fs));
+  this.autoRelease = false; this.autoGain = false; this.sidechainOn = false; this.scListen = false;
+  this.scHpfHz = 20; this.tScHpfHz = 20;
+  this.scBellHz = 1000; this.tScBellHz = 1000;
+  this.scBellDb = 0; this.tScBellDb = 0;
+  this.scBellQ = 1; this.tScBellQ = 1;
+  this.autoGainDbVal = 0;
+
+  // style: a discrete change, crossfaded through a brief silence so it never clicks
+  this.style = 'clean'; this.tStyle = 'clean'; this.profile = styleProfile('clean');
+  this.styleGate = 1; this.styleDir = 0;
+  this.styleFadeStep = 1 / (0.012 * fs);   // ~12ms down, ~12ms back up
+
+  // detector and envelope state, one per channel (for stereo link)
+  this.rmsEnvL = 0; this.rmsEnvR = 0;
+  this.envGrL = 0; this.envGrR = 0;
+  this.holdL = 0; this.holdR = 0;   // program-dependent auto-release: a slow peak-hold of recent "over" level
+
+  // feedback topology: last sample's wet (compressed) output
+  this.lastWetL = 0; this.lastWetR = 0;
+
+  // the sidechain filter: two biquads per channel (HPF then bell), applied to the detector only.
+  // Coefficients are recomputed once a block, not every sample -- cheap, and a filter control
+  // moving 2-3ms "late" is inaudible.
+  this.scHpfL = new Biquad(); this.scHpfR = new Biquad();
+  this.scBellL = new Biquad(); this.scBellR = new Biquad();
+
+  // lookahead: a small delay line for the audible signal; the detector reads the undelayed one
+  this.maxLookSamples = Math.max(4, Math.round(MAX_LOOKAHEAD_MS * 0.001 * fs) + 2);
+  this.delayL = new Float32Array(this.maxLookSamples);
+  this.delayR = new Float32Array(this.maxLookSamples);
+  this.delayPos = 0;
+
   // how fast a knob move reaches the engine: ~50ms, so nothing zippers
   this.glide = 1 - Math.exp(-1 / (0.05 * fs));
+  this.rmsCoef = Math.exp(-1 / (0.01 * fs));
   this.meter = new Float64Array(5);   // peaks since the last read: in L, in R, out L, out R, max GR (dB)
+  this.latencySamples = 0;
 }
 CompEngine.prototype.setParams = function(p){
   this.tThresh = p.thresholdDb; this.tRatio = p.ratio; this.tKnee = p.kneeDb;
   this.tAttackMs = p.attackMs; this.tReleaseMs = p.releaseMs; this.tMakeup = p.makeupDb;
   this.tMix = p.mixPct / 100; this.tRange = p.rangeDb; this.tPower = p.power ? 1 : 0;
+  this.tLookaheadMs = p.lookaheadMs; this.tLink = p.stereoLinkPct / 100;
+  this.autoRelease = !!p.autoRelease; this.autoGain = !!p.autoGain;
+  this.sidechainOn = !!p.sidechainOn; this.scListen = !!p.scListen;
+  this.tScHpfHz = p.scHpfHz; this.tScBellHz = p.scBellHz; this.tScBellDb = p.scBellDb; this.tScBellQ = p.scBellQ;
+  this.tStyle = STYLE_PROFILES[p.style] ? p.style : 'clean';
+  this.autoGainDbVal = autoGainDb(p);
+  this.latencySamples = Math.round(Math.max(0, Math.min(MAX_LOOKAHEAD_MS, p.lookaheadMs)) * 0.001 * this.fs);
 };
-// inL/inR: input (Float32Array); outL/outR: output; n samples.
-CompEngine.prototype.process = function(inL, inR, outL, outR, n){
-  var meter = this.meter, k = this.glide;
+CompEngine.prototype.getLatency = function(){ return this.latencySamples; };
+
+// inL/inR: input (Float32Array); outL/outR: output; n samples. scL/scR: the sidechain, or null.
+CompEngine.prototype.process = function(inL, inR, outL, outR, n, scL, scR){
+  var meter = this.meter, k = this.glide, fs = this.fs;
+  // the sidechain filter coefficients: recomputed every 64 samples (not every sample -- it's
+  // just trig, cheap either way, but there's no need) so a moving knob still tracks within ~1ms
+  var SC_COEF_BLOCK = 64;
+  this.scHpfL.setHpf(this.scHpfHz, 0.71, fs); this.scHpfR.setHpf(this.scHpfHz, 0.71, fs);
+  this.scBellL.setPeak(this.scBellHz, this.scBellDb, this.scBellQ, fs); this.scBellR.setPeak(this.scBellHz, this.scBellDb, this.scBellQ, fs);
+
   for (var i = 0; i < n; i++) {
+    if (i > 0 && i % SC_COEF_BLOCK === 0) {
+      this.scHpfL.setHpf(this.scHpfHz, 0.71, fs); this.scHpfR.setHpf(this.scHpfHz, 0.71, fs);
+      this.scBellL.setPeak(this.scBellHz, this.scBellDb, this.scBellQ, fs); this.scBellR.setPeak(this.scBellHz, this.scBellDb, this.scBellQ, fs);
+    }
     this.thresh += (this.tThresh - this.thresh) * k;
     this.ratio += (this.tRatio - this.ratio) * k;
     this.knee += (this.tKnee - this.knee) * k;
@@ -268,39 +425,98 @@ CompEngine.prototype.process = function(inL, inR, outL, outR, n){
     this.makeup += (this.tMakeup - this.makeup) * k;
     this.mix += (this.tMix - this.mix) * k;
     this.range += (this.tRange - this.range) * k;
+    this.lookaheadMs += (this.tLookaheadMs - this.lookaheadMs) * k;
+    this.link += (this.tLink - this.link) * k;
     this.power += (this.tPower - this.power) * k;
+    this.scHpfHz += (this.tScHpfHz - this.scHpfHz) * k;
+    this.scBellHz += (this.tScBellHz - this.scBellHz) * k;
+    this.scBellDb += (this.tScBellDb - this.scBellDb) * k;
+    this.scBellQ += (this.tScBellQ - this.scBellQ) * k;
+
+    // the style, as a discrete change crossfaded through a brief silence (never clicks)
+    if (this.styleDir === 0 && this.style !== this.tStyle) this.styleDir = -1;
+    if (this.styleDir) {
+      this.styleGate += this.styleDir * this.styleFadeStep;
+      if (this.styleDir < 0 && this.styleGate <= 0) {
+        this.styleGate = 0; this.style = this.tStyle; this.profile = styleProfile(this.style);
+        this.rmsEnvL = 0; this.rmsEnvR = 0; this.envGrL = 0; this.envGrR = 0; this.holdL = 0; this.holdR = 0;
+        this.lastWetL = 0; this.lastWetR = 0;
+        this.styleDir = 1;
+      } else if (this.styleDir > 0 && this.styleGate >= 1) { this.styleGate = 1; this.styleDir = 0; }
+    }
+    var prof = this.profile;
 
     var l = inL[i], r = inR[i];
     var al = l < 0 ? -l : l, ar = r < 0 ? -r : r;
     if (al > meter[0]) meter[0] = al;
     if (ar > meter[1]) meter[1] = ar;
 
-    // the detector: a blend of the instant peak and a short RMS window
-    var peak = al > ar ? al : ar;
-    var ms = (l * l + r * r) * 0.5;
-    this.rmsEnv += (ms - this.rmsEnv) * (1 - this.rmsCoef);
-    var rms = Math.sqrt(this.rmsEnv > 0 ? this.rmsEnv : 0);
-    var detect = (1 - this.detBlend) * peak + this.detBlend * rms;
-    var detDb = 20 * Math.log10(detect > 1e-6 ? detect : 1e-6);
+    // lookahead: delay the audible signal; the detector below reads the undelayed one
+    var dn = this.delayL.length;
+    this.delayL[this.delayPos] = l; this.delayR[this.delayPos] = r;
+    var lookSamples = Math.round(Math.max(0, Math.min(MAX_LOOKAHEAD_MS, this.lookaheadMs)) * 0.001 * fs);
+    var readPos = (this.delayPos - lookSamples + dn * 4) % dn;
+    var dl = this.delayL[readPos], dr = this.delayR[readPos];
+    this.delayPos = (this.delayPos + 1) % dn;
 
-    var grTarget = compGainReductionDb(detDb, { thresholdDb: this.thresh, ratio: this.ratio, kneeDb: this.knee, rangeDb: this.range });
+    // the detector's own input: the sidechain if it's on, else the main signal (feedback
+    // topology reads the engine's own last output instead); filtered by the SC HPF/bell either way
+    var srcL = prof.fb ? this.lastWetL : ((this.sidechainOn && scL) ? scL[i] : l);
+    var srcR = prof.fb ? this.lastWetR : ((this.sidechainOn && scR) ? scR[i] : r);
+    var fdL = this.scBellL.process(this.scHpfL.process(srcL));
+    var fdR = this.scBellR.process(this.scHpfR.process(srcR));
 
-    // the envelope follows the gain-reduction signal: attack while it's growing, release while it's easing
-    var ac = Math.exp(-1 / Math.max(0.0001, this.attackMs * 0.001 * this.fs));
-    var rc = Math.exp(-1 / Math.max(0.0001, this.releaseMs * 0.001 * this.fs));
-    var coef = grTarget > this.envGr ? ac : rc;
-    this.envGr += (grTarget - this.envGr) * (1 - coef);
+    var blend = prof.blend;
+    var peakL = fdL < 0 ? -fdL : fdL, peakR = fdR < 0 ? -fdR : fdR;
+    this.rmsEnvL += (fdL * fdL - this.rmsEnvL) * (1 - this.rmsCoef);
+    this.rmsEnvR += (fdR * fdR - this.rmsEnvR) * (1 - this.rmsCoef);
+    var rmsL = Math.sqrt(this.rmsEnvL > 0 ? this.rmsEnvL : 0), rmsR = Math.sqrt(this.rmsEnvR > 0 ? this.rmsEnvR : 0);
+    var detL = (1 - blend) * peakL + blend * rmsL, detR = (1 - blend) * peakR + blend * rmsR;
+    var maxDet = detL > detR ? detL : detR;
+    var linkedL = detL + this.link * (maxDet - detL), linkedR = detR + this.link * (maxDet - detR);
+    var detDbL = 20 * Math.log10(linkedL > 1e-6 ? linkedL : 1e-6), detDbR = 20 * Math.log10(linkedR > 1e-6 ? linkedR : 1e-6);
 
-    var linGain = Math.pow(10, (this.makeup - this.envGr) / 20);
-    var wetL = l * linGain, wetR = r * linGain;
-    var mixedL = l + this.mix * (wetL - l), mixedR = r + this.mix * (wetR - r);
-    var ol = l + this.power * (mixedL - l), or = r + this.power * (mixedR - r);
+    var pForCurve = { thresholdDb: this.thresh, ratio: this.ratio, kneeDb: this.knee, rangeDb: this.range, style: this.style };
+    var grTargetL = compGainReductionDb(detDbL, pForCurve), grTargetR = compGainReductionDb(detDbR, pForCurve);
+
+    var attackMsEff = Math.max(this.attackMs, prof.attackFloorMs);
+    var ac = Math.exp(-1 / Math.max(0.0001, attackMsEff * 0.001 * fs));
+
+    // release: fixed, or program-dependent (a fast stage and the user's own time, blended by
+    // how long the signal's been loud -- a slow peak-hold of how far over threshold it is)
+    var overL = detDbL - this.thresh, overR = detDbR - this.thresh;
+    var holdDecay = Math.exp(-1 / (prof.relSlowSec * fs));
+    this.holdL = Math.max(overL, this.holdL * holdDecay); this.holdR = Math.max(overR, this.holdR * holdDecay);
+    var autoAmount = Math.max(prof.relFloor, (this.autoRelease || prof.relAlways) ? 1 : 0);
+    var fastRc = Math.exp(-1 / (0.05 * fs)), userRc = Math.exp(-1 / Math.max(0.0001, this.releaseMs * 0.001 * fs));
+    var pfL = Math.max(0, Math.min(1, this.holdL / 18)), pfR = Math.max(0, Math.min(1, this.holdR / 18));
+    var autoRcL = prof.fastOnly ? fastRc : (fastRc + (userRc - fastRc) * (1 - pfL));
+    var autoRcR = prof.fastOnly ? fastRc : (fastRc + (userRc - fastRc) * (1 - pfR));
+    var rcL = userRc + autoAmount * (autoRcL - userRc), rcR = userRc + autoAmount * (autoRcR - userRc);
+
+    var coefL = grTargetL > this.envGrL ? ac : rcL, coefR = grTargetR > this.envGrR ? ac : rcR;
+    this.envGrL += (grTargetL - this.envGrL) * (1 - coefL);
+    this.envGrR += (grTargetR - this.envGrR) * (1 - coefR);
+
+    var autoGainAmt = this.autoGain ? this.autoGainDbVal : 0;
+    var linGainL = Math.pow(10, (this.makeup + autoGainAmt - this.envGrL) / 20);
+    var linGainR = Math.pow(10, (this.makeup + autoGainAmt - this.envGrR) / 20);
+    var wetL = dl * linGainL, wetR = dr * linGainR;
+    this.lastWetL = wetL; this.lastWetR = wetR;
+
+    var mixedL, mixedR;
+    if (this.scListen) { mixedL = fdL; mixedR = fdR; }
+    else { mixedL = dl + this.mix * (wetL - dl); mixedR = dr + this.mix * (wetR - dr); }
+
+    var gate = this.power * this.styleGate;
+    var ol = dl + gate * (mixedL - dl), or = dr + gate * (mixedR - dr);
     outL[i] = ol; outR[i] = or;
 
     var aol = ol < 0 ? -ol : ol, aor = or < 0 ? -or : or;
     if (aol > meter[2]) meter[2] = aol;
     if (aor > meter[3]) meter[3] = aor;
-    if (this.envGr > meter[4]) meter[4] = this.envGr;
+    var grShow = Math.max(this.envGrL, this.envGrR);
+    if (grShow > meter[4]) meter[4] = grShow;
   }
 };
 
@@ -318,12 +534,13 @@ if (typeof registerProcessor === 'function') {
       if (this.silence.length < n) this.silence = new Float32Array(n);
       var il = input && input[0] ? input[0] : this.silence, ir = input && input[1] ? input[1] : il;
       if (!this.ready) { out[0].set(il); out[1].set(ir); return true; }
-      this.engine.process(il, ir, out[0], out[1], n);
+      var sc = inputs[1], scl = sc && sc[0] ? sc[0] : null, scr = sc && sc[1] ? sc[1] : scl;
+      this.engine.process(il, ir, out[0], out[1], n, scl, scr);
       this.frames += n;
       if (this.frames >= sampleRate / 30) {
         this.frames = 0;
         var mt = this.engine.meter;
-        this.port.postMessage({ type: 'meter', m: [mt[0], mt[1], mt[2], mt[3], mt[4]] });
+        this.port.postMessage({ type: 'meter', m: [mt[0], mt[1], mt[2], mt[3], mt[4]], lat: this.engine.getLatency() });
         mt.fill(0);
       }
       return true;
@@ -390,7 +607,7 @@ if (typeof registerProcessor === 'function') {
   }
 
   // ---------- audio ----------
-  var ctx = null, node = null, inputBus = null;
+  var ctx = null, node = null, inputBus = null, scBus = null;
   function sendParams(){
     if (node) node.port.postMessage({ type: 'params', p: Object.assign({}, params, { power: !bypassed }) });
   }
@@ -398,18 +615,21 @@ if (typeof registerProcessor === 'function') {
     if (ctx) return;
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     inputBus = ctx.createGain();
+    scBus = ctx.createGain();
     if (!ctx.audioWorklet) { $('no-worklet').hidden = false; return; }
     var source = $('dsp-shared').textContent + $('dsp-engine').textContent;
     // A data: URL rather than a blob: Chrome refuses blob worklets on pages opened from a file.
     var url = 'data:application/javascript;charset=utf-8,' + encodeURIComponent(source);
     ctx.audioWorklet.addModule(url).then(function(){
-      node = new AudioWorkletNode(ctx, 'egret-comp', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+      node = new AudioWorkletNode(ctx, 'egret-comp', { numberOfInputs: 2, numberOfOutputs: 1, outputChannelCount: [2],
                                                         channelCount: 2, channelCountMode: 'explicit', channelInterpretation: 'speakers' });
-      inputBus.connect(node);
+      inputBus.connect(node, 0, 0);
+      scBus.connect(node, 0, 1);
       node.connect(ctx.destination);
-      node.port.onmessage = function(e){ if (e.data.type === 'meter') onMeter(e.data.m); };
+      node.port.onmessage = function(e){ if (e.data.type === 'meter') { onMeter(e.data.m); onLatency(e.data.lat); } };
       sendParams();
       if (src.playing) startSource();
+      startSc();
     }, function(){ $('no-worklet').hidden = false; });
   }
   var bypassed = false;
@@ -423,6 +643,8 @@ if (typeof registerProcessor === 'function') {
     if (!isPowered()) setPower(true);
     else if (ctx && ctx.state === 'suspended') ctx.resume();
   }
+  var latencySamples = 0;
+  function onLatency(l){ if (l !== undefined) latencySamples = l; }
   function renderBypass(){ var b = $('bypass'); b.classList.toggle('is-on', bypassed); b.setAttribute('aria-pressed', bypassed ? 'true' : 'false'); }
   $('bypass').addEventListener('click', function(){ bypassed = !bypassed; sendParams(); renderBypass(); });
   ['pointerdown', 'keydown'].forEach(function(type){
@@ -558,6 +780,48 @@ if (typeof registerProcessor === 'function') {
     }, function(){ setSrcStatus('Couldn’t read ' + file.name); });
   }
 
+  // ---------- the sidechain: another sound for the detector to listen to ----------
+  // It isn't heard on its own (unless LISTEN is on); SIDECHAIN on routes the detector to it.
+  var SC_SOURCES = ['off', 'demo', 'noise', 'file'], SC_LABELS = ['OFF', 'DEMO', 'NOISE', 'FILE'];
+  var sc = { source: 'off', node: null, file: null, fileName: '' };
+  function stopSc(){ if (sc.node) { try { sc.node.stop(); } catch (err) {} sc.node.disconnect(); sc.node = null; } }
+  function startSc(){
+    stopSc();
+    if (!ctx || !node || sc.source === 'off') return;
+    var buf = sc.source === 'demo' ? (src.demo || (src.demo = toBuffer(makeDemo(ctx.sampleRate)))) :
+              sc.source === 'noise' ? (src.noise || (src.noise = toBuffer(makeNoise(ctx.sampleRate)))) : sc.file;
+    if (!buf) return;
+    var s = ctx.createBufferSource();
+    s.buffer = buf; s.loop = true; s.connect(scBus); s.start();
+    sc.node = s;
+  }
+  function setSc(source){
+    sc.source = source;
+    if (source !== 'off') ensurePower();
+    startSc(); renderSc();
+  }
+  var scButtons = SC_SOURCES.map(function(s, i){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip-btn'; b.textContent = SC_LABELS[i];
+    b.addEventListener('click', function(){ if (s === 'file' && !sc.file) { $('sc-file').click(); return; } setSc(s); });
+    $('sc-chips').appendChild(b);
+    return b;
+  });
+  function renderSc(){
+    scButtons.forEach(function(b, i){ var on = SC_SOURCES[i] === sc.source; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    $('sc-status').textContent = sc.source === 'off' ? 'Turn SIDECHAIN on in the plugin to use this' : sc.source === 'demo' ? 'Demo loop' :
+                                 sc.source === 'noise' ? 'Pink noise' : sc.fileName;
+  }
+  $('sc-file').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    ensurePower();
+    file.arrayBuffer().then(function(data){ return ctx.decodeAudioData(data); }).then(function(buf){
+      sc.file = buf; sc.fileName = file.name; setSc('file');
+    }, function(){ $('sc-status').textContent = 'Couldn’t read ' + file.name; });
+  });
+
   // ---------- the player: tracks from music/playlist.json, or your own ----------
   var player = { tracks: [], index: -1, audio: new Audio(), node: null, seeking: false };
   player.audio.preload = 'auto';
@@ -642,13 +906,20 @@ if (typeof registerProcessor === 'function') {
 
   // ---------- knobs ----------
   var KNOB_DEFS = {
-    thresh:  { label: 'Thresh',  min: -60, max: 0,   unit: 'dB',    def: -18 },
-    ratio:   { label: 'Ratio',   min: 1,   max: 20,  unit: 'ratio', log: true, def: 4 },
-    knee:    { label: 'Knee',    min: 0,   max: 24,  unit: 'dBp',   def: 6 },
-    attack:  { label: 'Attack',  min: 0.1, max: 300, unit: 'ms',    log: true, def: 10 },
-    release: { label: 'Release', min: 20,  max: 3000,unit: 'ms',    log: true, def: 120 },
-    makeup:  { label: 'Makeup',  min: -24, max: 24,  unit: 'dB',    def: 0 },
-    mix:     { label: 'Mix',     min: 0,   max: 100, unit: '%',     def: 100 }
+    thresh:    { label: 'Thresh',  min: -60, max: 0,    unit: 'dB',    def: -18 },
+    ratio:     { label: 'Ratio',   min: 1,   max: 20,   unit: 'ratio', log: true, def: 4 },
+    knee:      { label: 'Knee',    min: 0,   max: 24,   unit: 'dBp',   def: 6 },
+    attack:    { label: 'Attack',  min: 0.1, max: 300,  unit: 'ms',    log: true, def: 10 },
+    release:   { label: 'Release', min: 20,  max: 3000, unit: 'ms',    log: true, def: 120 },
+    makeup:    { label: 'Makeup',  min: -24, max: 24,   unit: 'dB',    def: 0 },
+    mix:       { label: 'Mix',     min: 0,   max: 100,  unit: '%',     def: 100 },
+    range:     { label: 'Range',   min: 0,   max: 60,   unit: 'dBp',   def: 60 },
+    lookahead: { label: 'Look',    min: 0,   max: 20,   unit: 'ms',    def: 0 },
+    link:      { label: 'Link',    min: 0,   max: 100,  unit: '%',     def: 100 },
+    scHpf:     { label: 'HPF',     min: 20,  max: 2000, unit: 'Hz',    log: true, def: 20 },
+    scBellHz:  { label: 'Freq',    min: 20,  max: 20000,unit: 'Hz',    log: true, def: 1000 },
+    scBellDb:  { label: 'Gain',    min: -24, max: 24,   unit: 'dB',    def: 0 },
+    scBellQ:   { label: 'Q',       min: 0.1, max: 8,    unit: 'q',     log: true, def: 1 }
   };
   function fmt(def, v){
     if (def.unit === 'dB') { var r = Math.round(v * 10) / 10; return (r > 0 ? '+' : r < 0 ? '−' : '') + Math.abs(r).toFixed(1) + ' dB'; }
@@ -656,6 +927,8 @@ if (typeof registerProcessor === 'function') {
     if (def.unit === 'ratio') return v >= 19.9 ? '∞:1' : v.toFixed(v < 10 ? 2 : 1) + ':1';
     if (def.unit === 'ms') return v >= 1000 ? (v / 1000).toFixed(2) + ' s' : v < 10 ? v.toFixed(1) + ' ms' : Math.round(v) + ' ms';
     if (def.unit === '%') return Math.round(v) + '%';
+    if (def.unit === 'Hz') return v >= 10000 ? (v / 1000).toFixed(1) + ' kHz' : v >= 1000 ? (v / 1000).toFixed(2) + ' kHz' : v >= 100 ? Math.round(v) + ' Hz' : v.toFixed(1) + ' Hz';
+    if (def.unit === 'q') return v < 10 ? v.toFixed(2) : v.toFixed(1);
     return Math.round(v) + def.unit;
   }
   function toT(def, v){ return def.log ? Math.log(v / def.min) / Math.log(def.max / def.min) : (v - def.min) / (def.max - def.min); }
@@ -669,6 +942,7 @@ if (typeof registerProcessor === 'function') {
     if (!m) return null;
     var v = parseFloat(m[1]);
     if (def.unit === 'ms' && m[2] === 's') v *= 1000;
+    if (def.unit === 'Hz' && (m[2] === 'k' || m[2] === 'khz')) v *= 1000;
     return Math.min(def.max, Math.max(def.min, v));
   }
   function typeInto(readout, def, get, set, after){
@@ -707,13 +981,13 @@ if (typeof registerProcessor === 'function') {
     }
     readout.addEventListener('click', function(e){ e.stopPropagation(); typeInto(readout, def, get, set, render); });
     var drag = null;
-    cap.addEventListener('pointerdown', function(e){ drag = { y: e.clientY, t: toT(def, get()) }; cap.setPointerCapture(e.pointerId); });
+    cap.addEventListener('pointerdown', function(e){ drag = { y: e.clientY, t: toT(def, get()) }; cap.setPointerCapture(e.pointerId); beginGesture(); });
     cap.addEventListener('pointermove', function(e){
       if (!drag) return;
       drag.t += (drag.y - e.clientY) / 150 * (e.shiftKey ? 0.2 : 1); drag.y = e.clientY;
       set(fromT(def, drag.t)); render();
     });
-    cap.addEventListener('pointerup', function(){ drag = null; });
+    cap.addEventListener('pointerup', function(){ drag = null; endGesture(); });
     cap.addEventListener('dblclick', function(){ set(def.def); render(); });
     el.addEventListener('wheel', function(e){
       e.preventDefault();
@@ -738,10 +1012,256 @@ if (typeof registerProcessor === 'function') {
     $('knob-row').appendChild(kn.el);
     knobRenders.push(kn.render);
   });
+  // ---------- the style selector ----------
+  var styleButtons = {};
+  STYLES.forEach(function(s){
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'tb'; b.textContent = STYLE_LABELS[s];
+    b.title = 'Style: ' + STYLE_LABELS[s];
+    b.addEventListener('click', function(){ params.style = s; changed(); renderStyle(); });
+    styleButtons[s] = b;
+  });
+  var styleWrap = document.createElement('div');
+  styleWrap.className = 'style-btns'; styleWrap.setAttribute('role', 'group'); styleWrap.setAttribute('aria-label', 'Style');
+  STYLES.forEach(function(s){ styleWrap.appendChild(styleButtons[s]); });
+  $('style-row').appendChild(styleWrap);
+  function renderStyle(){
+    STYLES.forEach(function(s){ var on = params.style === s; styleButtons[s].classList.toggle('is-on', on); styleButtons[s].setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  }
+
+  // ---------- Range, Lookahead, Link: in the second row, beside the style buttons ----------
+  ['range', 'lookahead', 'link'].forEach(function(k){
+    var def = KNOB_DEFS[k], key = { range: 'rangeDb', lookahead: 'lookaheadMs', link: 'stereoLinkPct' }[k];
+    var kn = buildKnob(def, function(){ return params[key]; }, function(v){ params[key] = v; changed(); });
+    $('style-row').appendChild(kn.el);
+    knobRenders.push(kn.render);
+  });
+
+  // ---------- Auto Release, Auto Gain, Sidechain: toggles ----------
+  var autoRelBtn = document.createElement('button');
+  autoRelBtn.type = 'button'; autoRelBtn.className = 'tb'; autoRelBtn.title = 'Auto Release: a program-dependent release, on top of the Release knob';
+  autoRelBtn.addEventListener('click', function(){ params.autoRelease = !params.autoRelease; changed(); renderToggles(); });
+  $('style-row').appendChild(autoRelBtn);
+
+  var autoGainBtn = document.createElement('button');
+  autoGainBtn.type = 'button'; autoGainBtn.className = 'tb'; autoGainBtn.title = 'Auto Gain: makeup worked out from the threshold and ratio';
+  autoGainBtn.addEventListener('click', function(){ params.autoGain = !params.autoGain; changed(); renderToggles(); });
+  $('style-row').appendChild(autoGainBtn);
+
+  var scBtn = document.createElement('button');
+  scBtn.type = 'button'; scBtn.className = 'tb'; scBtn.title = 'Sidechain: the detector listens to another sound instead of the input (pick one in the player)';
+  scBtn.addEventListener('click', function(){ params.sidechainOn = !params.sidechainOn; changed(); renderToggles(); });
+  $('style-row').appendChild(scBtn);
+
+  function renderToggles(){
+    autoRelBtn.classList.toggle('is-on', params.autoRelease); autoRelBtn.setAttribute('aria-pressed', params.autoRelease ? 'true' : 'false');
+    autoRelBtn.textContent = 'Auto Release';
+    autoGainBtn.classList.toggle('is-on', params.autoGain); autoGainBtn.setAttribute('aria-pressed', params.autoGain ? 'true' : 'false');
+    autoGainBtn.textContent = params.autoGain ? 'Auto Gain ' + fmt(KNOB_DEFS.makeup, autoGainDb(params)) : 'Auto Gain';
+    scBtn.classList.toggle('is-on', params.sidechainOn); scBtn.setAttribute('aria-pressed', params.sidechainOn ? 'true' : 'false');
+    scBtn.textContent = 'Sidechain';
+    $('sc-row').classList.toggle('is-hidden', !params.sidechainOn);
+  }
+
+  // ---------- the sidechain filter: HPF then a bell, applied to the detector only ----------
+  ['scHpf', 'scBellHz', 'scBellDb', 'scBellQ'].forEach(function(k){
+    var def = KNOB_DEFS[k], key = { scHpf: 'scHpfHz', scBellHz: 'scBellHz', scBellDb: 'scBellDb', scBellQ: 'scBellQ' }[k];
+    var kn = buildKnob(def, function(){ return params[key]; }, function(v){ params[key] = v; changed(); });
+    $('sc-knobs').appendChild(kn.el);
+    knobRenders.push(kn.render);
+  });
+  var scListenBtn = $('sc-listen');
+  scListenBtn.addEventListener('click', function(){ params.scListen = !params.scListen; changed(); renderScListen(); });
+  function renderScListen(){ scListenBtn.classList.toggle('is-on', params.scListen); scListenBtn.setAttribute('aria-pressed', params.scListen ? 'true' : 'false'); }
+
   function renderKnobs(){ knobRenders.forEach(function(r){ r(); }); }
 
-  // Every change: tell the engine, remember it, redraw.
-  function changed(){ sendParams(); save(); renderKnobs(); invalidateCurve(); }
+  // Every change: tell the engine, mark the preset edited, remember it for undo, redraw.
+  function changed(){
+    sendParams(); save(); scheduleCommit();
+    if (presetName && presetName.slice(-9) !== ' (edited)') presetName += ' (edited)';
+    renderKnobs(); renderStyle(); renderToggles(); renderScListen(); renderPresetName(); invalidateCurve();
+  }
+  function renderAll(){
+    renderKnobs(); renderStyle(); renderToggles(); renderScListen(); renderPresetName(); renderUndo(); renderAB(); invalidateCurve(); requestDraw();
+  }
+  function setInfoText(t){ $('info').textContent = t || ''; clearTimeout(setInfoText.timer); if (t) setInfoText.timer = setTimeout(function(){ $('info').textContent = ''; }, 2500); }
+
+  // ---------- pop-up menus ----------
+  var menuEl = $('menu'), menuOpenFor = null;
+  // items: { label, checked, disabled, action } | { header } | { sep: true } | { input, value, action(text) }
+  function showMenu(anchor, items){
+    if (menuOpenFor === anchor) { closeMenu(); return; }
+    menuEl.textContent = '';
+    items.forEach(function(it){
+      var el;
+      if (it.sep) { el = document.createElement('div'); el.className = 'ms'; }
+      else if (it.header) { el = document.createElement('div'); el.className = 'mh'; el.textContent = it.header; }
+      else if (it.input) {
+        el = document.createElement('div'); el.style.padding = '4px';
+        var inp = document.createElement('input'); inp.type = 'text'; inp.placeholder = it.input; inp.value = it.value || ''; inp.maxLength = 32;
+        inp.addEventListener('keydown', function(e){
+          e.stopPropagation();
+          if (e.key === 'Enter') { closeMenu(); it.action(inp.value.trim()); } else if (e.key === 'Escape') closeMenu();
+        });
+        el.appendChild(inp);
+        setTimeout(function(){ inp.focus(); inp.select(); }, 0);
+      } else {
+        el = document.createElement('button'); el.type = 'button'; el.className = 'mi'; el.setAttribute('role', 'menuitem');
+        el.innerHTML = '<span class="chk"></span><span class="lbl"></span>';
+        el.querySelector('.chk').textContent = it.checked ? '✓' : '';
+        el.querySelector('.lbl').textContent = it.label;
+        if (it.disabled) el.disabled = true;
+        el.addEventListener('click', function(e){ e.stopPropagation(); closeMenu(); it.action && it.action(); });
+      }
+      menuEl.appendChild(el);
+    });
+    menuEl.hidden = false;
+    var r = anchor.getBoundingClientRect(), mw = menuEl.offsetWidth, mh = menuEl.offsetHeight;
+    var x = Math.max(4, Math.min(window.innerWidth - mw - 4, r.left)), y = r.bottom + 4;
+    if (y + mh > window.innerHeight - 4) y = Math.max(4, r.top - mh - 4);
+    menuEl.style.left = x + 'px'; menuEl.style.top = y + 'px';
+    menuOpenFor = anchor;
+  }
+  function closeMenu(){ menuEl.hidden = true; menuOpenFor = null; }
+  document.addEventListener('pointerdown', function(e){ if (!menuEl.hidden && !menuEl.contains(e.target) && e.target !== menuOpenFor && !(menuOpenFor && menuOpenFor.contains(e.target))) closeMenu(); });
+  window.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !menuEl.hidden) closeMenu(); });
+
+  // ---------- undo / redo ----------
+  var undoStack = [], redoStack = [], committed = clone(params), undoTimer = null, gestures = 0;
+  function beginGesture(){ gestures++; }
+  function endGesture(){ gestures = Math.max(0, gestures - 1); if (!gestures) commitUndo(); }
+  function scheduleCommit(){ clearTimeout(undoTimer); undoTimer = setTimeout(commitUndo, 400); }
+  function same(a, b){ return JSON.stringify(a) === JSON.stringify(b); }
+  function commitUndo(){
+    clearTimeout(undoTimer); undoTimer = null;
+    if (gestures) { scheduleCommit(); return; }
+    if (same(committed, params)) return;
+    undoStack.push(committed); if (undoStack.length > 100) undoStack.shift();
+    redoStack = []; committed = clone(params); renderUndo();
+  }
+  function restore(p){
+    params = clone(p); committed = clone(p);
+    sendParams(); save(); renderAll();
+  }
+  function undo(){ if (undoTimer) commitUndo(); if (!undoStack.length) return; redoStack.push(clone(params)); restore(undoStack.pop()); }
+  function redo(){ if (undoTimer) commitUndo(); if (!redoStack.length) return; undoStack.push(clone(params)); restore(redoStack.pop()); }
+  function renderUndo(){ $('undo').disabled = !undoStack.length && !undoTimer; $('redo').disabled = !redoStack.length; }
+  $('undo').addEventListener('click', undo); $('redo').addEventListener('click', redo);
+  window.addEventListener('keydown', function(e){
+    if (!(e.ctrlKey || e.metaKey) || document.activeElement.tagName === 'INPUT') return;
+    if (e.key.toLowerCase() === 'z' && e.shiftKey) { e.preventDefault(); redo(); }
+    else if (e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  });
+
+  // ---------- A / B ----------
+  var ab = { cur: 'A', A: null, B: null };
+  function renderAB(){ $('ab-cur').textContent = ab.cur; $('ab-copy').textContent = 'Copy ' + ab.cur + '→' + (ab.cur === 'A' ? 'B' : 'A'); }
+  $('ab').addEventListener('click', function(){
+    var to = ab.cur === 'A' ? 'B' : 'A';
+    if (undoTimer) commitUndo();
+    ab[ab.cur] = clone(params);
+    ab.cur = to;
+    var next = ab[to] || clone(params);
+    undoStack.push(clone(params)); redoStack = [];
+    restore(next); renderAB();
+  });
+  $('ab-copy').addEventListener('click', function(){ var other = ab.cur === 'A' ? 'B' : 'A'; ab[other] = clone(params); save(); setInfoText('Copied ' + ab.cur + ' to ' + other); });
+
+  // ---------- presets ----------
+  // "key=value;..." -- the VST reads the same strings.
+  var FACTORY_PRESETS = [
+    ['Default', ''],
+    ['Vocal Gentle', 'thresh=-20;ratio=3;knee=9;attack=8;release=150;style=vocal'],
+    ['Vocal Tight', 'thresh=-24;ratio=5;knee=3;attack=1;release=90;style=vocal'],
+    ['Bus Glue', 'thresh=-16;ratio=2.5;knee=12;attack=20;release=250;style=bus;auto=1'],
+    ['Drum Punch', 'thresh=-14;ratio=6;knee=2;attack=20;release=120;style=punch'],
+    ['Mastering Transparent', 'thresh=-10;ratio=1.8;knee=12;attack=30;release=300;style=mastering;auto=1;autogain=1'],
+    ['Opto Smooth', 'thresh=-18;ratio=4;knee=6;attack=15;release=150;style=opto'],
+    ['Classic VCA', 'thresh=-18;ratio=4;knee=6;attack=10;release=120;style=classic'],
+    ['Parallel NY', 'thresh=-30;ratio=10;knee=0;attack=3;release=120;mix=45;style=clean']
+  ];
+  function presetParams(spec){
+    var p = clone(DEFAULTS);
+    spec.split(';').forEach(function(item){
+      var kv = item.split('='); if (kv.length !== 2) return;
+      var key = kv[0].trim(), v = kv[1].trim();
+      if (key === 'thresh') p.thresholdDb = parseFloat(v);
+      else if (key === 'ratio') p.ratio = parseFloat(v);
+      else if (key === 'knee') p.kneeDb = parseFloat(v);
+      else if (key === 'attack') p.attackMs = parseFloat(v);
+      else if (key === 'release') p.releaseMs = parseFloat(v);
+      else if (key === 'makeup') p.makeupDb = parseFloat(v);
+      else if (key === 'mix') p.mixPct = parseFloat(v);
+      else if (key === 'range') p.rangeDb = parseFloat(v);
+      else if (key === 'lookahead') p.lookaheadMs = parseFloat(v);
+      else if (key === 'link') p.stereoLinkPct = parseFloat(v);
+      else if (key === 'auto') p.autoRelease = v === '1';
+      else if (key === 'autogain') p.autoGain = v === '1';
+      else if (key === 'sc') p.sidechainOn = v === '1';
+      else if (key === 'schpf') p.scHpfHz = parseFloat(v);
+      else if (key === 'scbellhz') p.scBellHz = parseFloat(v);
+      else if (key === 'scbelldb') p.scBellDb = parseFloat(v);
+      else if (key === 'scbellq') p.scBellQ = parseFloat(v);
+      else if (key === 'style' && STYLE_PROFILES[v]) p.style = v;
+    });
+    return p;
+  }
+  var presetName = 'Default';
+  var PRESET_KEY = 'egret-comp/presets/v1';
+  var userPresets = {};
+  try { userPresets = JSON.parse(localStorage.getItem(PRESET_KEY) || '{}') || {}; } catch (err) { userPresets = {}; }
+  function storeUser(){ try { localStorage.setItem(PRESET_KEY, JSON.stringify(userPresets)); return true; } catch (err) { return false; } }
+  function allPresetKeys(){
+    return FACTORY_PRESETS.map(function(p){ return 'f:' + p[0]; }).concat(Object.keys(userPresets).sort().map(function(n){ return 'u:' + n; }));
+  }
+  function currentPresetKey(){
+    var base = presetName.replace(/ \(edited\)$/, '');
+    return userPresets[base] ? 'u:' + base : FACTORY_PRESETS.some(function(p){ return p[0] === base; }) ? 'f:' + base : '';
+  }
+  function renderPresetName(){ $('preset-name').textContent = presetName || '—'; }
+  function loadPreset(key){
+    var name = key.slice(2), p;
+    if (key.indexOf('f:') === 0) { var f = FACTORY_PRESETS.filter(function(x){ return x[0] === name; })[0]; if (f) p = presetParams(f[1]); }
+    else if (userPresets[name]) p = Object.assign(clone(DEFAULTS), userPresets[name]);
+    if (!p) return;
+    if (undoTimer) commitUndo();
+    undoStack.push(clone(params)); redoStack = [];
+    presetName = name;
+    restore(p); renderPresetName(); saveNow();
+  }
+  function stepPreset(d){
+    var keys = allPresetKeys(), i = keys.indexOf(currentPresetKey());
+    loadPreset(keys[((i < 0 ? 0 : i + d) % keys.length + keys.length) % keys.length]);
+  }
+  $('preset-prev').addEventListener('click', function(){ stepPreset(-1); });
+  $('preset-next').addEventListener('click', function(){ stepPreset(1); });
+  function savePreset(name){
+    var base = presetName.replace(/ \(edited\)$/, '');
+    name = name || (userPresets[base] ? base : 'My preset ' + (Object.keys(userPresets).length + 1));
+    if (FACTORY_PRESETS.some(function(p){ return p[0] === name; })) name += ' (mine)';
+    var existed = !!userPresets[name];
+    userPresets[name] = clone(params);
+    var stored = storeUser();
+    presetName = name; renderPresetName(); saveNow();
+    setInfoText(!stored ? 'Saved for this session only (browser storage is unavailable)' : (existed ? 'Updated “' : 'Saved “') + name + '”');
+  }
+  $('preset-btn').addEventListener('click', function(){
+    var cur = currentPresetKey(), items = [{ header: 'Factory' }];
+    FACTORY_PRESETS.forEach(function(p){ items.push({ label: p[0], checked: cur === 'f:' + p[0], action: function(){ loadPreset('f:' + p[0]); } }); });
+    var names = Object.keys(userPresets).sort();
+    if (names.length) {
+      items.push({ header: 'Your presets' });
+      names.forEach(function(n){ items.push({ label: n, checked: cur === 'u:' + n, action: function(){ loadPreset('u:' + n); } }); });
+    }
+    items.push({ sep: true }, { header: 'Save as' }, { input: 'Preset name, then Enter', value: cur.indexOf('u:') === 0 ? cur.slice(2) : '', action: savePreset });
+    if (cur.indexOf('u:') === 0) items.push({ label: 'Delete “' + cur.slice(2) + '”', action: function(){
+      var name = cur.slice(2);
+      if (!window.confirm('Delete your preset “' + name + '”?')) return;
+      delete userPresets[name]; storeUser(); loadPreset('f:Default'); setInfoText('Deleted “' + name + '”');
+    } });
+    showMenu($('preset-btn'), items);
+  });
 
   // ---------- the display: a scrolling level history with the transfer curve overlaid on
   // it (one field, like Pro-C3's -- not two separate graphs), and the meter ----------
@@ -822,12 +1342,48 @@ if (typeof registerProcessor === 'function') {
     }
     hg.stroke(); hg.shadowBlur = 0;
 
-    // the threshold, marked on the curve (like Pro-C3's draggable knee/threshold dots --
-    // not draggable yet, that's follow-up work)
-    var tg = compGainReductionDb(params.thresholdDb, params);
+    // threshold and knee: draggable dots on the curve, like Pro-C3's
+    var tp = thresholdPos(), kp = kneePos();
     hg.fillStyle = T.transfer;
-    hg.beginPath(); hg.arc(hx(params.thresholdDb), hy(params.thresholdDb - tg + params.makeupDb), 4, 0, Math.PI * 2); hg.fill();
+    hg.beginPath(); hg.arc(tp.x, tp.y, dragMode === 'thresh' ? 6 : 4, 0, Math.PI * 2); hg.fill();
+    hg.globalAlpha = 0.6;
+    hg.beginPath(); hg.arc(kp.x, kp.y, dragMode === 'knee' ? 6 : 4, 0, Math.PI * 2); hg.fill();
+    hg.globalAlpha = 1;
   }
+
+  // the curve's own math, for the draggable handles below (y = output dB for a given input dB)
+  function curveY(inDb){ return inDb - compGainReductionDb(inDb, params) + params.makeupDb; }
+  function thresholdPos(){ var db = params.thresholdDb; return { x: hx(db), y: hy(curveY(db)) }; }
+  function kneePos(){ var db = params.thresholdDb + params.kneeDb / 2; return { x: hx(db), y: hy(curveY(db)) }; }
+  function dbFromX(x){ return DB_MIN + Math.max(0, Math.min(1, x / hView.w)) * (DB_MAX - DB_MIN); }
+
+  var dragMode = null;
+  function hitPoint(p, pos, r){ var dx = pos.x - p.x, dy = pos.y - p.y; return dx * dx + dy * dy < r * r; }
+  function pointerPos(e){ var r = historyCanvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  historyCanvas.addEventListener('pointerdown', function(e){
+    var p = pointerPos(e);
+    if (hitPoint(p, thresholdPos(), 10)) { dragMode = 'thresh'; historyCanvas.setPointerCapture(e.pointerId); beginGesture(); }
+    else if (hitPoint(p, kneePos(), 9)) { dragMode = 'knee'; historyCanvas.setPointerCapture(e.pointerId); beginGesture(); }
+    requestDraw();
+  });
+  historyCanvas.addEventListener('pointermove', function(e){
+    var p = pointerPos(e);
+    if (!dragMode) {
+      var near = hitPoint(p, thresholdPos(), 10) || hitPoint(p, kneePos(), 9);
+      historyCanvas.style.cursor = near ? 'ew-resize' : '';
+      return;
+    }
+    var db = dbFromX(p.x);
+    if (dragMode === 'thresh') params.thresholdDb = Math.max(KNOB_DEFS.thresh.min, Math.min(KNOB_DEFS.thresh.max, db));
+    else params.kneeDb = Math.max(KNOB_DEFS.knee.min, Math.min(KNOB_DEFS.knee.max, 2 * (db - params.thresholdDb)));
+    changed();
+  });
+  historyCanvas.addEventListener('pointerup', function(e){ if (dragMode) { dragMode = null; endGesture(); requestDraw(); } });
+  historyCanvas.addEventListener('dblclick', function(e){
+    var p = pointerPos(e);
+    if (hitPoint(p, thresholdPos(), 10)) { params.thresholdDb = KNOB_DEFS.thresh.def; changed(); }
+    else if (hitPoint(p, kneePos(), 9)) { params.kneeDb = KNOB_DEFS.knee.def; changed(); }
+  });
 
   var meterShown = [0, 0, 0, 0], grShown = 0;
   function onMeter(m){
@@ -894,14 +1450,16 @@ if (typeof registerProcessor === 'function') {
   var bird = $('bird'), subText = $('brand-sub'), subOriginal = subText.innerHTML, birdTimer = null;
   bird.addEventListener('click', function(){
     bird.classList.remove('is-diving'); void bird.offsetWidth; bird.classList.add('is-diving');
-    subText.innerHTML = '<span class="jp" lang="ja">カワセミ</span> · Kawasemi';
+    subText.innerHTML = '<span class="jp" lang="ja">ハクチョウ</span> · Hakucho';
     clearTimeout(birdTimer);
     birdTimer = setTimeout(function(){ subText.innerHTML = subOriginal; }, 2600);
   });
 
   applyTheme();
   renderBypass();
-  renderSource(); renderPlayer();
+  renderStyle(); renderToggles(); renderScListen();
+  renderUndo(); renderAB(); renderPresetName();
+  renderSource(); renderSc(); renderPlayer();
   fitScreen();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitScreen);
 })();
